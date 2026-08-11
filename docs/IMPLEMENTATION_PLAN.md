@@ -6,7 +6,7 @@
 - Phase 1: complete
 - Phase 2: complete
 - Phase 3: complete
-- Hosted Migration + Deployment: implementation complete; cloud provisioning/acceptance pending the required Supabase project/operator secret setup
+- Hosted Migration + Deployment: Supabase, Render, and Cloudflare are deployed; final authenticated acceptance is pending operator invitation acceptance/password choice
 - Phase 4 and later: not started
 
 ## Principle

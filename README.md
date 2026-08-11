@@ -111,12 +111,15 @@ The migration creates `posts`, `scheduling_attempts`, indexes, restrictive RLS p
 
 ## Deployment
 
-- Backend: `render.yaml` defines exactly one Singapore `plan: free` Python web service with no disk or Render datastore.
-- Frontend: build with the three browser-safe Vite variables and deploy `frontend/dist` using `npx wrangler pages deploy`.
+- Frontend: [https://facebook-page-operations-dashboard.pages.dev](https://facebook-page-operations-dashboard.pages.dev)
+- Backend: [https://facebook-page-operations-api.onrender.com](https://facebook-page-operations-api.onrender.com)
+- Supabase: `Facebook Page Operations Dashboard` (`dqgaviukwfyaxqswraaf`), Singapore (`ap-southeast-1`)
+- `render.yaml` defines exactly one Singapore `plan: free` Python web service with no disk or Render datastore.
+- Build with the three browser-safe Vite variables and deploy `frontend/dist` using `npx wrangler pages deploy`.
 - Routing: `frontend/public/_redirects` provides the SPA fallback for nested-route refreshes.
 - CORS: production must set `FRONTEND_ORIGINS` to the exact Cloudflare Pages origin plus the two documented local development origins; wildcard CORS is not used.
 
-Deployment URLs and hosted acceptance status are recorded after the required free resources and operator account exist.
+The schema, private bucket, Render service, and Pages site are live. An operator invitation has been sent to the allowlisted email; authenticated end-to-end acceptance remains pending until that operator privately chooses a password from the invitation link.
 
 ## API
 
@@ -135,6 +138,8 @@ Requires a valid authorized Supabase Bearer token:
 - `GET /api/media/{object_path}`
 
 Private images are proxied through the authenticated backend. Supabase secret keys, database credentials, and Facebook tokens never enter the frontend.
+
+The current hosted Storage service requires the backend-only legacy `service_role` JWT for its `Authorization` header. It is stored under the generic `SUPABASE_SECRET_KEY` server variable because the newer opaque scoped secret is not accepted by this Storage endpoint version. The legacy key is never exposed to Vite or committed.
 
 ## Foundational documents
 

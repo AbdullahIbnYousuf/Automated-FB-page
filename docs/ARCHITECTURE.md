@@ -143,6 +143,8 @@ The backend validates the entire upload before Storage receives it:
 
 Only the stable object path is stored in PostgreSQL. The bucket is private. The authenticated backend checks the database reference and proxies the bytes; it never returns or persists privileged keys or permanent/signed public URLs.
 
+The deployed Supabase Storage API currently requires a legacy `service_role` JWT in the backend `Authorization` header; its newer opaque scoped secret was rejected by the live Storage endpoint. The JWT is therefore stored only in Render's `SUPABASE_SECRET_KEY` variable. Revisit the opaque key when the hosted Storage API supports it end to end.
+
 ## 8. Scheduling service boundary
 
 Conceptually:
