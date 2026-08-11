@@ -1,6 +1,9 @@
 import { Route, Routes } from "react-router-dom";
 
+import { AuthProvider, useAuth } from "./auth/AuthContext";
 import { AppShell } from "./components/AppShell";
+import { LoginPage } from "./pages/LoginPage";
+import { PasswordSetupPage } from "./pages/PasswordSetupPage";
 import { NewPostPage } from "./pages/NewPostPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
 import { OverviewPage } from "./pages/OverviewPage";
@@ -9,7 +12,15 @@ import { PostsPage } from "./pages/PostsPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { SystemStatusProvider } from "./state/SystemStatusContext";
 
-export default function App() {
+function AuthenticatedApplication() {
+  const { loading, passwordSetupRequired, session } = useAuth();
+
+  if (loading) {
+    return <main className="login-page"><p>Checking operator session…</p></main>;
+  }
+  if (!session) return <LoginPage />;
+  if (passwordSetupRequired) return <PasswordSetupPage />;
+
   return (
     <SystemStatusProvider>
       <Routes>
@@ -24,5 +35,13 @@ export default function App() {
         </Route>
       </Routes>
     </SystemStatusProvider>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <AuthenticatedApplication />
+    </AuthProvider>
   );
 }

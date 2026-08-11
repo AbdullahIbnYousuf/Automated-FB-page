@@ -37,6 +37,22 @@ export function SettingsPage() {
 
       <section className="configuration-panel">
         <ConfigurationRow
+          label="Supabase"
+          value={
+            unavailable
+              ? "Unknown"
+              : status.supabase_configured
+                ? "Configured"
+                : "Not configured"
+          }
+          detail="PostgreSQL, private Storage, and Auth are backend-controlled"
+        />
+        <ConfigurationRow
+          label="Dashboard authentication"
+          value={status?.authentication_required ? "Required" : "Disabled"}
+          detail="Hosted mode fails closed unless operator authentication is enabled"
+        />
+        <ConfigurationRow
           label="Page ID"
           value={
             unavailable

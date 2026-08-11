@@ -3,11 +3,9 @@
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from functools import lru_cache
-from pathlib import Path
 from typing import Any
 
-from sqlalchemy import DateTime, Engine, create_engine
-from sqlalchemy.engine import make_url
+from sqlalchemy import DateTime, Engine, create_engine, text
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 from sqlalchemy.types import TypeDecorator
 
@@ -19,9 +17,9 @@ class Base(DeclarativeBase):
 
 
 class UTCDateTime(TypeDecorator[datetime]):
-    """Persist aware UTC datetimes in SQLite and restore UTC on reads."""
+    """Persist aware UTC datetimes and normalize reads to UTC."""
 
-    impl = DateTime
+    impl = DateTime(timezone=True)
     cache_ok = True
 
     def process_bind_param(
@@ -29,28 +27,35 @@ class UTCDateTime(TypeDecorator[datetime]):
         value: datetime | None,
         dialect: Any,
     ) -> datetime | None:
-        del dialect
         if value is None:
             return None
         if value.tzinfo is None or value.utcoffset() is None:
             raise ValueError("UTCDateTime requires a timezone-aware datetime")
-        return value.astimezone(UTC).replace(tzinfo=None)
+        normalized = value.astimezone(UTC)
+        if dialect.name == "sqlite":
+            return normalized.replace(tzinfo=None)
+        return normalized
 
     def process_result_value(
         self,
         value: datetime | None,
         dialect: Any,
     ) -> datetime | None:
-        del dialect
         if value is None:
             return None
-        return value.replace(tzinfo=UTC)
+        if value.tzinfo is None or value.utcoffset() is None:
+            return value.replace(tzinfo=UTC)
+        return value.astimezone(UTC)
 
 
 @lru_cache
 def get_engine(database_url: str) -> Engine:
     connect_args = {"check_same_thread": False} if database_url.startswith("sqlite") else {}
-    return create_engine(database_url, connect_args=connect_args)
+    return create_engine(
+        database_url,
+        connect_args=connect_args,
+        pool_pre_ping=not database_url.startswith("sqlite"),
+    )
 
 
 @lru_cache
@@ -62,28 +67,23 @@ def get_session_factory(database_url: str) -> sessionmaker[Session]:
     )
 
 
-def _ensure_sqlite_directory(database_url: str) -> None:
-    url = make_url(database_url)
-    if url.drivername != "sqlite" or not url.database or url.database == ":memory:":
-        return
-
-    Path(url.database).expanduser().resolve().parent.mkdir(parents=True, exist_ok=True)
-
-
 def initialize_database() -> None:
-    """Prepare storage and create metadata for currently registered models."""
+    """Validate connectivity; hosted schema changes are applied by migrations."""
 
     settings = get_settings()
-    _ensure_sqlite_directory(settings.database_url)
-    from app.models import post as post_models
+    database_url = settings.require_database_url()
+    if database_url.startswith("sqlite"):
+        from app.models import post as post_models
 
-    del post_models
-    Base.metadata.create_all(bind=get_engine(settings.database_url))
+        del post_models
+        Base.metadata.create_all(bind=get_engine(database_url))
+    with get_engine(database_url).connect() as connection:
+        connection.execute(text("SELECT 1"))
 
 
 def session_scope() -> Iterator[Session]:
     """Yield a database session using the current configured database."""
 
     settings = get_settings()
-    with get_session_factory(settings.database_url)() as session:
+    with get_session_factory(settings.require_database_url())() as session:
         yield session

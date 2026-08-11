@@ -44,7 +44,9 @@ class Post(Base):
         String(36), primary_key=True, default=lambda: str(uuid4())
     )
     caption: Mapped[str] = mapped_column(Text, nullable=False)
-    image_filename: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    image_object_path: Mapped[str] = mapped_column(
+        String(255), nullable=False, unique=True
+    )
     image_mime_type: Mapped[str] = mapped_column(String(32), nullable=False)
     original_filename: Mapped[str] = mapped_column(String(255), nullable=False)
     status: Mapped[PostStatus] = mapped_column(

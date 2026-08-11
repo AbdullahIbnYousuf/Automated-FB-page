@@ -26,6 +26,10 @@ The backend — not the frontend — enforces this rule.
 Secrets include at minimum:
 
 - Facebook Page access token
+- Supabase secret key
+- PostgreSQL password/connection URL
+- operator password and access/refresh tokens
+- Render credentials and secret environment values
 - future API keys
 - future webhook secrets
 
@@ -39,6 +43,8 @@ Rules:
 - never print it in logs
 - never include it in exception text returned to the client
 - never commit it to Git history
+- browser builds may contain only the Supabase URL and publishable key
+- never expose `SUPABASE_SECRET_KEY` or `DATABASE_URL` through Vite variables
 
 If a token is accidentally committed or exposed, treat it as compromised and rotate/revoke it.
 
@@ -158,16 +164,31 @@ Must not log:
 
 Errors returned to the GUI should be actionable but sanitized.
 
-## 11. Database Safety
+## 11. Database and Storage Safety
 
-V1 SQLite data is local application data.
+Supabase PostgreSQL is authoritative application data. Old SQLite/upload files remain rollback/reference data until migration acceptance.
 
 - do not store Facebook access token in the `posts` table
 - use database transactions around important state changes
 - avoid marking a post `scheduled` before Meta confirms success
 - preserve failure information rather than silently resetting state
+- apply hosted schema changes through committed migrations
+- enable RLS and revoke browser Data API access to application tables
+- keep the image bucket private and store only stable object paths
+- proxy private media through an authenticated backend route
+- never persist privileged keys or permanent/signed public URLs
 
-## 12. Dry-Run Guarantee
+## 12. Authentication Safety
+
+- only `/api/health` may be public
+- system status, posts, scheduling, and media require a valid Supabase access token
+- verify tokens server-side and compare the verified email to `OPERATOR_EMAIL`
+- never trust a browser-supplied user ID or email
+- missing hosted Auth configuration must fail closed
+- public signup, anonymous login, profiles, roles, and multi-user behavior are disabled/out of scope
+- do not invent, print, log, or commit the operator password
+
+## 13. Dry-Run Guarantee
 
 Dry run must be testable.
 
@@ -175,7 +196,7 @@ Automated tests should verify that when dry run is active, the real Facebook cli
 
 A visible `DRY RUN` indicator should exist in the GUI when the app cannot publish.
 
-## 13. Dependency and TLS Rules
+## 14. Dependency and TLS Rules
 
 - do not disable TLS certificate verification
 - prefer maintained libraries
@@ -183,6 +204,12 @@ A visible `DRY RUN` indicator should exist in the GUI when the app cannot publis
 - do not add a dependency solely to avoid writing a few lines of ordinary code
 - pin/lock dependencies in the normal ecosystem-appropriate way once implementation begins
 
-## 14. Future Features
+## 15. Free-Tier Infrastructure Guard
+
+- Cloudflare Pages, one Render Free web service, and Supabase Free are the only current hosted resources
+- no Render disk/database/worker, paid plan, custom domain, billing setup, or paid add-on
+- stop before an operation that requires payment or destructive user-data loss
+
+## 16. Future Features
 
 Analytics, comments, scoring, AI generation, and additional platforms require new threat/safety reviews. Do not assume V1's permissions or data model are sufficient for them.

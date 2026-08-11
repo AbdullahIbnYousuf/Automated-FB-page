@@ -1,203 +1,149 @@
 # Architecture — Scheduler V1
 
-## 1. Architectural Goal
+## 1. Architectural goal
 
-V1 should be small enough to understand completely but structured enough to support later content scoring, analytics, comments, and content creation without rewriting the scheduling core.
-
-The architecture is deliberately split into UI, application API, persistence, and Facebook integration.
+Keep the scheduling core small, explicit, testable, and safe while making the current post-management and dry-run dashboard available to one operator from a browser or phone.
 
 ```text
-┌───────────────────────────────┐
-│ React + TypeScript Frontend   │
-│ GUI only; no Meta secrets     │
-└───────────────┬───────────────┘
-                │ HTTP / JSON + multipart upload
-                ▼
-┌───────────────────────────────┐
-│ FastAPI Backend               │
-│ validation + orchestration    │
-└───────┬───────────┬───────────┘
-        │           │
-        │           └──────────────────┐
-        ▼                              ▼
-┌───────────────┐              ┌──────────────────┐
-│ SQLite        │              │ Local Media      │
-│ post records  │              │ uploaded images  │
-└───────────────┘              └──────────────────┘
-        │
-        ▼
-┌───────────────────────────────┐
-│ Facebook Integration Service  │
-│ official Meta Graph API only  │
-└───────────────────────────────┘
+┌───────────────────────────────────────┐
+│ Cloudflare Pages                     │
+│ React + TypeScript + Vite            │
+│ Supabase Auth session; no secrets    │
+└──────────────────┬────────────────────┘
+                   │ HTTPS + Bearer token
+                   ▼
+┌───────────────────────────────────────┐
+│ Render Free Web Service              │
+│ FastAPI validation + orchestration   │
+└──────────────┬──────────────┬─────────┘
+               │              │
+               ▼              ▼
+┌─────────────────────┐  ┌──────────────────────┐
+│ Supabase PostgreSQL │  │ Supabase Storage     │
+│ posts + attempts    │  │ private post-images  │
+└─────────────────────┘  └──────────────────────┘
+               │
+               ▼ future only
+┌───────────────────────────────────────┐
+│ Facebook integration service         │
+│ official Meta Graph API only         │
+└───────────────────────────────────────┘
 ```
 
-## 2. Recommended Repository Structure
+Local React and FastAPI processes connect to the same Supabase services through environment variables. SQLite and local uploaded files are retained only as rollback/reference data, not a parallel runtime architecture.
 
-```text
-/
-├── AGENTS.md
-├── README.md
-├── .env.example
-├── .gitignore
-├── docs/
-│   ├── MVP_SPEC.md
-│   ├── ARCHITECTURE.md
-│   ├── IMPLEMENTATION_PLAN.md
-│   └── SAFETY_RULES.md
-├── backend/
-│   ├── pyproject.toml
-│   ├── app/
-│   │   ├── main.py
-│   │   ├── config.py
-│   │   ├── database.py
-│   │   ├── models/
-│   │   │   └── post.py
-│   │   ├── schemas/
-│   │   │   └── post.py
-│   │   ├── api/
-│   │   │   ├── health.py
-│   │   │   ├── posts.py
-│   │   │   └── facebook.py
-│   │   ├── services/
-│   │   │   ├── post_service.py
-│   │   │   └── scheduling_service.py
-│   │   └── integrations/
-│   │       └── facebook/
-│   │           ├── client.py
-│   │           ├── types.py
-│   │           └── errors.py
-│   ├── tests/
-│   └── data/
-│       └── uploads/
-└── frontend/
-    ├── package.json
-    ├── vite.config.ts
-    └── src/
-        ├── app/
-        ├── components/
-        ├── pages/
-        ├── api/
-        └── types/
-```
+## 2. Deployment topology
 
-This is a target structure, not a requirement to create every empty file immediately.
+- Frontend: Cloudflare Pages default HTTPS domain, static Vite output.
+- Backend: one Render Free Python web service in Singapore, no persistent disk and no Render database/worker.
+- Persistence: one Supabase Free PostgreSQL project in Singapore.
+- Images: one private Supabase Storage bucket named `post-images`.
+- Authentication: Supabase email/password Auth with public signup disabled and one backend-allowlisted operator email.
+- Domain: platform default domains only; no purchased/custom domain.
 
-## 3. Backend Responsibilities
+All infrastructure must remain on free plans. Any action that requires billing, a paid add-on, persistent Render disk, or a paid instance is prohibited.
 
-The backend owns:
-
-- configuration
-- input validation
-- image storage
-- timezone conversion
-- post persistence
-- state transitions
-- dry-run simulation
-- Facebook authentication/configuration checks
-- Meta Graph API requests
-- safe error mapping
-- structured logs
-
-The backend is the only layer allowed to read `FACEBOOK_PAGE_ACCESS_TOKEN`.
-
-## 4. Frontend Responsibilities
+## 3. Frontend responsibilities
 
 The frontend owns:
 
-- forms
-- file selection and preview
-- post preview
-- list/detail presentation
-- loading/success/failure states
-- safe connection-status display
+- email/password login, persisted session, refresh handling, and logout
+- forms, file selection, and local image preview
+- post/list/detail presentation
+- loading, success, failure, and dry-run states
+- attaching the current Supabase access token to backend calls
+- loading private image bytes through the authenticated backend proxy
 
-The frontend must not:
+Allowed Vite variables are only:
 
-- contain or request the Facebook access token
-- construct raw Meta Graph API calls
-- determine whether a real write is safe
-- treat a browser-only validation as authoritative
+```env
+VITE_API_BASE_URL=
+VITE_SUPABASE_URL=
+VITE_SUPABASE_PUBLISHABLE_KEY=
+```
 
-## 5. Data Model
+The frontend must never receive the Supabase secret key, database URL/password, Facebook access token, or Render secrets. It must not call Meta or write directly to PostgreSQL/Storage.
+
+## 4. Backend responsibilities
+
+The backend owns:
+
+- Supabase access-token verification and the single-operator email allowlist
+- authoritative validation, timezone conversion, and state transitions
+- SQLAlchemy persistence to Supabase PostgreSQL
+- image validation and private Storage operations using a server-side key
+- authenticated media proxying
+- dry-run scheduling and immutable attempt history
+- safe configuration/status responses and structured logs
+- future Facebook integration behind a dedicated service boundary
+
+`GET /api/health` is public. System status, posts, scheduling, and media routes require an authenticated authorized operator.
+
+## 5. Data model
 
 ### `posts`
 
-Suggested V1 fields:
-
 ```text
-id                       UUID or integer primary key
+id                       text UUID primary key
 caption                  text, required
-image_path               text, required
-image_mime_type          text, required
-status                   enum/string, required
-scheduled_for_utc        datetime, nullable for draft
-display_timezone         text, default Asia/Dhaka
-facebook_object_id       text, nullable
-is_dry_run               boolean, default true
-last_error_code          text, nullable
-last_error_message       text, nullable
-scheduling_attempts      integer, default 0
-created_at               datetime UTC
-updated_at               datetime UTC
-last_attempted_at        datetime UTC, nullable
+image_object_path        stable private Storage path, unique
+image_mime_type          image/jpeg or image/png
+original_filename        display-only basename
+status                   draft|ready|scheduling|scheduled|failed|cancelled
+scheduled_for_utc        timestamptz
+display_timezone         Asia/Dhaka initially
+facebook_object_id       nullable
+last_error_code          nullable
+last_error_message       nullable, sanitized
+last_attempted_at        timestamptz nullable
+created_at               timestamptz
+updated_at               timestamptz
 ```
 
-Avoid storing the Page access token in the database in V1. Read it from environment configuration.
-
-### Optional `activity_logs`
-
-Only create this table if useful during implementation. Normal application logging plus fields on `posts` may be sufficient for V1.
-
-If created:
+### `scheduling_attempts`
 
 ```text
 id
-post_id nullable
-action
-result
+post_id                  foreign key; cascade on post deletion
+mode                     dry_run
+result                   in_progress|success|failed
 safe_message
+error_code               nullable
+external_request_made    false for every current attempt
 created_at
+completed_at             nullable
 ```
 
-Do not store secret-bearing raw HTTP headers or full tokens.
+The committed Supabase migration is authoritative. Application startup validates database connectivity; it does not mutate the hosted schema. Tests may call SQLAlchemy metadata creation only against isolated SQLite fixtures.
 
-## 6. API Shape
+Tables have RLS enabled and direct Data API grants revoked for `anon` and `authenticated`. Browser clients cannot bypass the FastAPI business rules.
 
-Exact route names may change slightly, but keep the API resource-oriented.
+## 6. Authentication boundary
 
-### Health
+The React app uses the official Supabase JavaScript client for session persistence and refresh. FastAPI validates each Bearer token against Supabase Auth's `/auth/v1/user` endpoint using the publishable key, then compares the returned email to `OPERATOR_EMAIL`.
 
-```text
-GET /api/health
-```
+Rules:
 
-Returns application health and safe mode information.
+- never trust browser-supplied user identifiers
+- missing, invalid, expired, or wrong-operator tokens fail closed
+- no public registration UI, roles, profiles, teams, or social login
+- hosted startup fails if Auth/Storage configuration is incomplete or Auth is disabled
+- a 401 clears the local browser session
 
-### Posts
+## 7. Storage boundary
 
-```text
-GET    /api/posts
-POST   /api/posts
-GET    /api/posts/{id}
-PATCH  /api/posts/{id}
-POST   /api/posts/{id}/schedule
-```
+The backend validates the entire upload before Storage receives it:
 
-`POST /api/posts` should accept multipart/form-data in V1 so caption metadata and one image can be submitted together, or use a two-step upload flow if implementation quality clearly benefits. Keep it simple.
+- one JPEG/PNG only
+- MIME, extension, and decoded content must agree
+- non-empty and at most 5 MiB
+- decoded dimensions below the configured pixel ceiling
+- UUID object name under `posts/`
+- no overwrite and no client-controlled path
 
-### Facebook Connection
+Only the stable object path is stored in PostgreSQL. The bucket is private. The authenticated backend checks the database reference and proxies the bytes; it never returns or persists privileged keys or permanent/signed public URLs.
 
-```text
-GET  /api/facebook/status
-POST /api/facebook/test-connection
-```
-
-Responses must never contain the Page access token.
-
-## 7. Scheduling Service Boundary
-
-Create a scheduling service that orchestrates the flow without knowing HTTP/UI details.
+## 8. Scheduling service boundary
 
 Conceptually:
 
@@ -205,147 +151,44 @@ Conceptually:
 schedule_post(post_id) -> ScheduleResult
 ```
 
-It should:
+The service claims an eligible post atomically, writes an in-progress attempt, validates caption/time/image availability, invokes the dry-run adapter, then commits the outcome. Duplicate in-progress attempts are rejected.
 
-1. load the post
-2. check current state
-3. validate required data
-4. validate application mode
-5. convert/check scheduling time
-6. choose dry-run or Facebook implementation
-7. persist the result/state
-8. return a safe result
+Current dry-run invariants:
 
-This service should be heavily testable with a fake Facebook client.
-
-## 8. Facebook Client Boundary
-
-Keep Meta-specific request details in one integration client.
-
-Conceptual operations:
-
-```python
-class FacebookPageClient:
-    async def test_connection(self) -> ConnectionResult: ...
-    async def schedule_photo_post(
-        self,
-        *,
-        caption: str,
-        image_path: Path,
-        scheduled_for_utc: datetime,
-    ) -> FacebookScheduleResult: ...
+```text
+post.status = ready
+attempt.external_request_made = false
+post.facebook_object_id = null
 ```
 
-The rest of the application should not know endpoint URLs, token query/body details, or Meta error payload shapes.
+No Facebook client exists in the hosted migration phase.
 
-Use the official current Meta documentation when implementing the actual request. As of this document's creation, Meta Graph API documentation exposes Page feed and Page photos scheduling using `scheduled_publish_time`, and Page photo scheduling requires unpublished/scheduling parameters.
+## 9. Future Facebook boundary
 
-## 9. API Versioning
+Phase 4 may add configuration and a read-only Page connection test. Phase 5 may add one real scheduled image post only after current official Meta documentation is re-verified.
 
-Do not scatter Graph API version strings through the code.
-
-Use one configuration value:
+Any future write remains backend-only and requires both:
 
 ```env
-FACEBOOK_GRAPH_API_VERSION=v26.0
+AUTOMATION_ENABLED=true
+PUBLISH_MODE=facebook_schedule
 ```
 
-The current Meta documentation exposes Graph API v26.0. Pin the version deliberately and update it centrally after compatibility testing when Meta versions change.
+The official Meta Graph API is the only permitted integration. Browser automation, cookies, scraping, and password automation remain forbidden.
 
-## 10. Time Handling
+## 10. Time and error rules
 
-The user initially operates in:
+- The UI explicitly displays `Asia/Dhaka`.
+- The backend interprets naive form input in that IANA timezone.
+- PostgreSQL stores aware UTC instants in `timestamptz`.
+- Past, nonexistent, and ambiguous local times are rejected rather than corrected.
+- API errors are structured and sanitized.
+- Logs may include route, internal post ID, state, safe error code, and duration; never credentials, tokens, authorization headers, `.env`, or secret-bearing bodies.
 
-```text
-Asia/Dhaka
-```
+## 11. Reproducibility
 
-Rules:
-
-- frontend displays the configured timezone explicitly
-- backend parses the user's intended local datetime in that timezone
-- backend stores UTC
-- backend sends the correct instant to Meta
-- API returns ISO-8601 timestamps
-- do not use naive datetimes in persistence/business logic
-
-Meta's current Page feed documentation constrains scheduled Page posts to a future scheduling window. Validate this using the current official docs at implementation time and expose a friendly validation error instead of waiting for Meta to reject obvious invalid input.
-
-## 11. Image Storage
-
-V1 local storage is acceptable.
-
-Rules:
-
-- create a dedicated upload directory
-- generate server-side filenames (UUID preferred)
-- store original extension only after validating type
-- validate MIME type and extension
-- prevent path traversal
-- do not serve arbitrary filesystem paths
-- expose media through a controlled static route if required for the UI
-
-Later versions can replace local storage with object storage behind a storage interface if necessary.
-
-## 12. Error Model
-
-Use application errors rather than leaking raw third-party payloads to the UI.
-
-Example categories:
-
-```text
-VALIDATION_ERROR
-CONFIGURATION_ERROR
-FACEBOOK_AUTH_ERROR
-FACEBOOK_PERMISSION_ERROR
-FACEBOOK_SCHEDULE_ERROR
-FACEBOOK_NETWORK_ERROR
-DUPLICATE_ATTEMPT_RISK
-INTERNAL_ERROR
-```
-
-Store the Meta error code/type where useful, but redact sensitive details.
-
-## 13. Logging
-
-Use structured backend logs with fields such as:
-
-```text
-action
-post_id
-status
-provider=facebook
-meta_error_code (when safe)
-duration_ms
-```
-
-Never log:
-
-- access tokens
-- Authorization headers
-- full `.env`
-- browser credentials
-
-## 14. Future Extensibility
-
-Later capabilities should attach to the existing `posts` domain rather than replacing it:
-
-- scoring adds score records/fields
-- analytics attaches performance snapshots to published Facebook IDs
-- comments attach conversation/comment records to Facebook post IDs
-- content creation creates new drafts that enter the same scheduling workflow
-
-That is why V1 must establish clean local post IDs, statuses, timestamps, and Facebook identifiers now.
-
-## 15. Current Official Meta References
-
-Use these as the primary references when implementing Phase 4 and Phase 5. Meta can change API versions, permissions, and request details, so implementation should be checked against the current version rather than copied from third-party tutorials.
-
-- Facebook Pages API overview: `https://developers.facebook.com/documentation/pages-api`
-- Pages API getting started: `https://developers.facebook.com/documentation/pages-api/getting-started`
-- Pages API posts guide: `https://developers.facebook.com/documentation/pages-api/posts`
-- Page Feed Graph API reference: `https://developers.facebook.com/docs/graph-api/reference/page/feed/`
-- Page Photos Graph API reference: `https://developers.facebook.com/docs/graph-api/reference/page/photos/`
-- Meta permissions reference: `https://developers.facebook.com/docs/permissions/`
-
-At documentation time (2026-08-11), Meta's Graph API reference is on v26.0. The Page Feed reference documents `scheduled_publish_time` and a scheduling window beginning at least 10 minutes in the future and extending up to 75 days. The Page Photos reference documents that scheduled photo posts require the scheduling/unpublished parameters, including `published`, `scheduled_publish_time`, and `unpublished_content_type`. Re-verify these constraints immediately before implementing the real write request.
+- `supabase/config.toml` holds non-secret Auth/Storage configuration.
+- `supabase/migrations/` holds the PostgreSQL and private-bucket schema.
+- `render.yaml` declares exactly one free backend service and secret variable names with `sync: false`.
+- `frontend/public/_redirects` provides the Cloudflare Pages SPA fallback.
+- No large CI/CD system is required for this prototype.

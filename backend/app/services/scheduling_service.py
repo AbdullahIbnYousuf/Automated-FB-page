@@ -33,14 +33,15 @@ class SchedulingService:
         session: Session,
         settings: Settings,
         *,
+        media_service: MediaService,
         dry_run_scheduler: DryRunScheduler | None = None,
     ) -> None:
         self.session = session
         self.settings = settings
-        self.media = MediaService(settings)
+        self.media = media_service
         self.dry_run_scheduler = dry_run_scheduler or DryRunScheduler()
 
-    def schedule_post(self, post_id: str) -> DryRunScheduleResponse:
+    async def schedule_post(self, post_id: str) -> DryRunScheduleResponse:
         if self.settings.publish_mode is not PublishMode.DRY_RUN:
             raise AppError(
                 code="CONFIGURATION_ERROR",
@@ -92,7 +93,7 @@ class SchedulingService:
 
         post = self._load_post(post_id)
         try:
-            self._validate_post(post, now=now)
+            await self._validate_post(post, now=now)
             result = self.dry_run_scheduler.schedule(post)
             completed_at = datetime.now(UTC)
             attempt.result = AttemptResult.SUCCESS
@@ -142,7 +143,7 @@ class SchedulingService:
             )
         return post
 
-    def _validate_post(self, post: Post, *, now: datetime) -> None:
+    async def _validate_post(self, post: Post, *, now: datetime) -> None:
         validate_caption(post.caption)
         if post.scheduled_for_utc.tzinfo is None:
             raise AppError(
@@ -157,16 +158,19 @@ class SchedulingService:
                 status_code=422,
             )
         try:
-            path = self.media.resolve_stored_file(post.image_filename)
-            with path.open("rb") as image:
-                if not image.read(1):
-                    raise OSError("empty image")
-        except (AppError, OSError) as exc:
+            image_exists = await self.media.object_exists(post.image_object_path)
+        except AppError as exc:
             raise AppError(
                 code="MISSING_IMAGE",
                 message="The stored image is missing or unreadable.",
                 status_code=422,
             ) from exc
+        if not image_exists:
+            raise AppError(
+                code="MISSING_IMAGE",
+                message="The stored image is missing or unreadable.",
+                status_code=422,
+            )
 
     def _record_failure(
         self,

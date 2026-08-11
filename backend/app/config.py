@@ -1,4 +1,4 @@
-"""Typed application configuration with fail-closed publishing defaults."""
+"""Typed application configuration with fail-closed hosted defaults."""
 
 from enum import StrEnum
 from functools import lru_cache
@@ -37,12 +37,19 @@ class Settings(BaseSettings):
     automation_enabled: bool = False
     publish_mode: PublishMode = PublishMode.DRY_RUN
     app_timezone: str = "Asia/Dhaka"
-    database_url: str = f"sqlite:///{BACKEND_DIRECTORY / 'data' / 'app.db'}"
-    frontend_origin: str = "http://127.0.0.1:5173"
+    database_url: str | None = None
+    frontend_origins: str = "http://127.0.0.1:5173,http://localhost:5173"
     log_level: str = "INFO"
-    upload_directory: Path = BACKEND_DIRECTORY / "data" / "uploads"
     max_upload_bytes: int = 5 * 1024 * 1024
     max_image_pixels: int = 40_000_000
+
+    auth_required: bool = True
+    operator_email: str | None = None
+    supabase_url: str | None = None
+    supabase_publishable_key: SecretStr | None = None
+    supabase_secret_key: SecretStr | None = None
+    supabase_storage_bucket: str = "post-images"
+    supabase_request_timeout_seconds: float = 15.0
 
     facebook_graph_api_version: str = "v26.0"
     facebook_page_id: str | None = None
@@ -66,6 +73,60 @@ class Settings(BaseSettings):
         if self.facebook_page_access_token is None:
             return False
         return bool(self.facebook_page_access_token.get_secret_value().strip())
+
+    @property
+    def allowed_frontend_origins(self) -> list[str]:
+        """Return explicit CORS origins without allowing wildcards."""
+
+        return [
+            origin.strip().rstrip("/")
+            for origin in self.frontend_origins.split(",")
+            if origin.strip() and origin.strip() != "*"
+        ]
+
+    @property
+    def supabase_configured(self) -> bool:
+        return all(
+            (
+                self.supabase_url and self.supabase_url.strip(),
+                self.supabase_publishable_key
+                and self.supabase_publishable_key.get_secret_value().strip(),
+                self.supabase_secret_key
+                and self.supabase_secret_key.get_secret_value().strip(),
+                self.operator_email and self.operator_email.strip(),
+            )
+        )
+
+    def require_database_url(self) -> str:
+        if not self.database_url or not self.database_url.strip():
+            raise RuntimeError("DATABASE_URL must be configured.")
+        value = self.database_url.strip()
+        if value.startswith("postgres://"):
+            return value.replace("postgres://", "postgresql+psycopg://", 1)
+        if value.startswith("postgresql://"):
+            return value.replace("postgresql://", "postgresql+psycopg://", 1)
+        return value
+
+    def require_supabase_url(self) -> str:
+        if not self.supabase_url or not self.supabase_url.strip():
+            raise RuntimeError("SUPABASE_URL must be configured.")
+        return self.supabase_url.strip().rstrip("/")
+
+    def require_supabase_publishable_key(self) -> str:
+        if self.supabase_publishable_key is None:
+            raise RuntimeError("SUPABASE_PUBLISHABLE_KEY must be configured.")
+        value = self.supabase_publishable_key.get_secret_value().strip()
+        if not value:
+            raise RuntimeError("SUPABASE_PUBLISHABLE_KEY must be configured.")
+        return value
+
+    def require_supabase_secret_key(self) -> str:
+        if self.supabase_secret_key is None:
+            raise RuntimeError("SUPABASE_SECRET_KEY must be configured.")
+        value = self.supabase_secret_key.get_secret_value().strip()
+        if not value:
+            raise RuntimeError("SUPABASE_SECRET_KEY must be configured.")
+        return value
 
 
 @lru_cache

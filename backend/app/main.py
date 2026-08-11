@@ -1,4 +1,4 @@
-"""FastAPI application entry point for local post and dry-run workflows."""
+"""FastAPI application entry point for hosted post and dry-run workflows."""
 
 import logging
 from collections.abc import AsyncIterator
@@ -27,6 +27,11 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    if settings.application_mode.lower() in {"production", "hosted"}:
+        if not settings.auth_required or not settings.supabase_configured:
+            raise RuntimeError(
+                "Hosted mode requires Supabase Auth and Storage configuration."
+            )
     initialize_database()
     logger.info(
         "Application started",
@@ -43,16 +48,16 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(
     title=settings.application_name,
-    version="0.3.0",
+    version="0.4.0",
     lifespan=lifespan,
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.frontend_origin],
+    allow_origins=settings.allowed_frontend_origins,
     allow_credentials=False,
     allow_methods=["GET", "POST", "PATCH", "OPTIONS"],
-    allow_headers=["Accept", "Content-Type"],
+    allow_headers=["Accept", "Authorization", "Content-Type"],
 )
 
 

@@ -25,11 +25,11 @@ V1 does not support multiple images, video, Reels, Stories, links as a distinct 
 
 ## 4. V1 Outputs
 
-For every post attempt, the system stores a local record containing at minimum:
+For every post attempt, the system stores a persistent record containing at minimum:
 
 - internal post ID
 - caption
-- stored image path
+- stable private Storage object path
 - created timestamp
 - scheduled timestamp in UTC
 - display timezone
@@ -44,8 +44,8 @@ The user sees a clear success or failure result in the GUI.
 
 Use an explicit state model. Minimum statuses:
 
-- `draft` — saved locally, not submitted to Meta
-- `ready` — locally valid and ready to schedule
+- `draft` — saved by the application, not submitted to Meta
+- `ready` — application-validated and ready to schedule
 - `scheduling` — a real scheduling request is in progress
 - `scheduled` — Meta accepted the scheduled content and returned an identifier
 - `failed` — scheduling attempt failed
@@ -93,7 +93,7 @@ Expected behavior:
 
 ### 6.3 Posts
 
-Show posts known to our local database with:
+Show posts known to our PostgreSQL database with:
 
 - thumbnail
 - short caption preview
@@ -150,7 +150,7 @@ PUBLISH_MODE=dry_run
 `Schedule` must:
 
 1. validate the content
-2. store/update the local post
+2. store/update the persistent post
 3. create a simulated scheduling result
 4. make **no write request** to Meta
 5. clearly label the record as dry-run/simulated in logs or metadata
@@ -251,10 +251,10 @@ Explicitly excluded:
 - multiple Pages
 - multiple images
 - video/Reels
-- public user accounts
+- public registration or multiple users
 - roles/permissions
 - SaaS billing
-- cloud deployment
+- paid infrastructure or custom domains
 
 ## 14. Acceptance Criteria
 
@@ -272,3 +272,16 @@ V1 is complete when all of the following are true:
 10. A failed Meta request produces a `failed` local state and useful safe error.
 11. Secrets are not committed, returned to the browser, or written to normal logs.
 12. Core backend scheduling/state-transition behavior has automated tests.
+
+## 15. Hosted single-operator boundary
+
+The current operational deployment adds infrastructure without expanding the Facebook feature scope:
+
+- React/Vite on Cloudflare Pages
+- FastAPI on one Render Free web service
+- Supabase PostgreSQL, private Storage, and email/password Auth
+- exactly one backend-allowlisted operator
+- no public signup UI, profiles, roles, teams, or SaaS behavior
+- public health only; all dashboard data and images require authentication
+
+This hosted migration does not implement Phase 4 connection testing or Phase 5 Facebook scheduling. Dry-run semantics and the two-switch future publishing guard remain unchanged.

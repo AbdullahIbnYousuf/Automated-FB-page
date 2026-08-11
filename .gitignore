@@ -21,6 +21,11 @@ backend/data/uploads/*
 frontend/node_modules/
 frontend/dist/
 frontend/.vite/
+.wrangler/
+
+# Supabase CLI local state
+supabase/.branches/
+supabase/.temp/
 
 # Local tooling and operating-system files
 .DS_Store

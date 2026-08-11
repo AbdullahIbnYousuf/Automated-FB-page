@@ -1,4 +1,4 @@
-"""Local post creation, retrieval, updates, and API mapping."""
+"""Post creation, retrieval, updates, and API mapping."""
 
 from datetime import UTC, datetime
 from zoneinfo import ZoneInfo
@@ -65,7 +65,7 @@ def post_response(post: Post) -> PostResponse:
     return PostResponse(
         id=post.id,
         caption=post.caption,
-        image_url=f"/api/media/{post.image_filename}",
+        image_url=f"/api/media/{post.image_object_path}",
         image_mime_type=post.image_mime_type,
         original_filename=post.original_filename,
         status=post.status,
@@ -104,7 +104,7 @@ class PostService:
         )
         post = Post(
             caption=cleaned_caption,
-            image_filename=image.filename,
+            image_object_path=image.object_path,
             image_mime_type=image.mime_type,
             original_filename=image.original_filename,
             status=PostStatus.DRAFT,

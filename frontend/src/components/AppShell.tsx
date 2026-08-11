@@ -1,5 +1,6 @@
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 
+import { useAuth } from "../auth/AuthContext";
 import { ModeBanner } from "./ModeBanner";
 
 const navigationItems = [
@@ -19,6 +20,7 @@ const pageTitles: Record<string, string> = {
 };
 
 export function AppShell() {
+  const { session, signOut } = useAuth();
   const location = useLocation();
   const pageTitle =
     pageTitles[location.pathname] ??
@@ -31,7 +33,7 @@ export function AppShell() {
           <span className="brand__mark">F</span>
           <span>
             <strong>Page Operations</strong>
-            <small>Local control desk</small>
+            <small>Hosted control desk</small>
           </span>
         </div>
 
@@ -53,8 +55,15 @@ export function AppShell() {
         </nav>
 
         <div className="sidebar__footnote">
-          <span className="eyebrow">V1 foundation</span>
-          <p>Reliable scheduling controls begin with a safe local workflow.</p>
+          <span className="eyebrow">Authorized operator</span>
+          <p>{session?.user.email}</p>
+          <button
+            className="sidebar__logout"
+            type="button"
+            onClick={() => void signOut()}
+          >
+            Sign out
+          </button>
         </div>
       </aside>
 

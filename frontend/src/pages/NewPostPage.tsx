@@ -85,7 +85,7 @@ export function NewPostPage() {
         <span className="eyebrow">Local post workspace</span>
         <h2>Prepare one image post</h2>
         <p>
-          Save a durable local draft or run the complete scheduling validation as
+          Save a durable hosted draft or run the complete scheduling validation as
           an explicit simulation. No Facebook request is available in this phase.
         </p>
       </section>
@@ -97,7 +97,7 @@ export function NewPostPage() {
             <h3>Post could not be processed</h3>
             <p>{error}</p>
             {createdPost ? (
-              <Link to={`/posts/${createdPost.id}`}>Open the saved local draft</Link>
+              <Link to={`/posts/${createdPost.id}`}>Open the saved draft</Link>
             ) : null}
           </div>
         </section>
@@ -109,7 +109,7 @@ export function NewPostPage() {
           <div>
             <h3>Dry-run scheduling completed</h3>
             <p>{dryRunResult.message}</p>
-            <small>External request made: No · Post remains locally ready</small>
+            <small>External request made: No · Post remains ready</small>
           </div>
           <Link className="secondary-button secondary-button--link" to={`/posts/${dryRunResult.post_id}`}>
             View post details

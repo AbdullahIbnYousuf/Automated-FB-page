@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
-import { ApiError, mediaUrl } from "../api/client";
+import { ApiError } from "../api/client";
 import { listPosts } from "../api/posts";
+import { AuthenticatedImage } from "../components/AuthenticatedImage";
 import { AttemptStatusBadge, PostStatusBadge } from "../components/PostStatusBadge";
 import type { PostRecord } from "../types/post";
 import { formatZonedDateTime } from "../utils/datetime";
@@ -32,9 +33,9 @@ export function PostsPage() {
     <div className="page-stack">
       <section className="section-panel section-panel--intro compact-intro list-heading">
         <div>
-          <span className="eyebrow">Local content queue</span>
+          <span className="eyebrow">Content queue</span>
           <h2>Posts</h2>
-          <p>Every item shown here comes from the local SQLite database.</p>
+          <p>Every item shown here is stored in Supabase PostgreSQL.</p>
         </div>
         <button className="secondary-button" type="button" onClick={() => void load()}>
           Refresh
@@ -54,7 +55,7 @@ export function PostsPage() {
         <section className="empty-state">
           <div className="empty-state__mark">0</div>
           <h2>No posts yet</h2>
-          <p>Create a local draft and it will appear here after refresh or restart.</p>
+          <p>Create a draft and it will remain available after refresh or restart.</p>
           <Link className="primary-button primary-button--link" to="/new-post">Create your first post</Link>
         </section>
       ) : (
@@ -63,7 +64,7 @@ export function PostsPage() {
             const latestAttempt = post.attempts[0];
             return (
               <Link className="post-row" to={`/posts/${post.id}`} key={post.id}>
-                <img src={mediaUrl(post.image_url)} alt="" className="post-row__image" />
+                <AuthenticatedImage path={post.image_url} alt="" className="post-row__image" />
                 <div className="post-row__body">
                   <div className="post-row__badges">
                     <PostStatusBadge status={post.status} />

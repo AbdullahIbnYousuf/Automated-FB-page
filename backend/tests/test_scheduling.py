@@ -1,7 +1,5 @@
 """Dry-run scheduling state, attempt, and external-write safety tests."""
 
-from pathlib import Path
-
 import httpx
 import pytest
 from fastapi.testclient import TestClient
@@ -10,7 +8,7 @@ from sqlalchemy import update
 from app.config import get_settings
 from app.database import get_session_factory
 from app.models.post import Post, PostStatus
-from app.services.scheduling_service import SchedulingService
+from tests.conftest import InMemoryMediaService
 from tests.helpers import create_post
 
 
@@ -57,7 +55,7 @@ def test_automation_disabled_does_not_block_local_simulation(
 def test_invalid_post_cannot_dry_run(client: TestClient) -> None:
     post = create_post(client).json()
     settings = get_settings()
-    with get_session_factory(settings.database_url)() as session:
+    with get_session_factory(settings.require_database_url())() as session:
         session.execute(
             update(Post).where(Post.id == post["id"]).values(caption="")
         )
@@ -72,10 +70,12 @@ def test_invalid_post_cannot_dry_run(client: TestClient) -> None:
     assert persisted["attempts"][0]["result"] == "failed"
 
 
-def test_missing_image_cannot_dry_run(client: TestClient) -> None:
+def test_missing_image_cannot_dry_run(
+    client: TestClient, fake_media: InMemoryMediaService
+) -> None:
     post = create_post(client).json()
-    filename = post["image_url"].rsplit("/", 1)[-1]
-    Path(get_settings().upload_directory, filename).unlink()
+    object_path = post["image_url"].removeprefix("/api/media/")
+    fake_media.objects.pop(object_path)
 
     response = client.post(f"/api/posts/{post['id']}/schedule")
 
@@ -88,7 +88,7 @@ def test_missing_image_cannot_dry_run(client: TestClient) -> None:
 def test_running_attempt_is_rejected_as_duplicate(client: TestClient) -> None:
     post = create_post(client).json()
     settings = get_settings()
-    with get_session_factory(settings.database_url)() as session:
+    with get_session_factory(settings.require_database_url())() as session:
         session.execute(
             update(Post)
             .where(Post.id == post["id"])
@@ -118,12 +118,10 @@ def test_dry_run_service_invokes_no_http_or_external_write_client(
 
     monkeypatch.setattr(httpx, "request", forbidden_request)
     monkeypatch.setattr(httpx.AsyncClient, "request", forbidden_async_request)
-    settings = get_settings()
-    with get_session_factory(settings.database_url)() as session:
-        result = SchedulingService(session, settings).schedule_post(post["id"])
+    response = client.post(f"/api/posts/{post['id']}/schedule")
 
-    assert result.success is True
-    assert result.external_request_made is False
+    assert response.status_code == 200
+    assert response.json()["external_request_made"] is False
 
 
 def test_non_dry_run_configuration_fails_closed_without_attempt(

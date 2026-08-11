@@ -1,172 +1,80 @@
 # Facebook Page Operations Dashboard
 
-A local-first web application for managing already-created Facebook Page content.
+A single-operator web dashboard for managing already-created Facebook Page content. Phases 1–3 provide draft creation, one-image upload, timezone-safe scheduling data, post management, and dry-run scheduling. Facebook/Meta integration is intentionally not implemented yet.
 
-## What We Are Building First
-
-The first version is a **GUI Facebook Page scheduler**.
-
-A user supplies:
-
-- a written caption
-- one image
-- a future publication date/time
-
-The application validates the input, shows a preview, stores a local record, and — when real publishing is explicitly enabled — schedules the content to a Facebook Page using the official Meta Graph API.
-
-The purpose of V1 is to prove that our system can reliably manage and schedule existing content. AI content creation is deliberately excluded.
-
-## Product Direction
-
-The intended progression is:
+## Current architecture
 
 ```text
-V1  Scheduling existing content
+Browser / phone
     ↓
-V2  Better content library / queue / calendar management
+Cloudflare Pages — React + TypeScript + Vite
+    ↓ Bearer token from Supabase Auth
+Render Free Web Service — FastAPI
     ↓
-V3  Content scoring
-    ↓
-V4  Analytics and performance dashboard
-    ↓
-V5  Comment management
-    ↓
-V6  Content creation and research automation
+Supabase Free
+├── PostgreSQL — posts and scheduling_attempts
+├── private Storage — validated post images
+└── Auth — one email/password operator
 ```
 
-The order may evolve, but content creation should remain later than the operations foundation.
+Local React and FastAPI development use the same Supabase project. SQLite and local upload files are no longer runtime persistence; any old files under `backend/data/` are retained only as rollback/reference data.
 
-## V1 User Flow
+## Product boundary
 
-```text
-Open web app
-    ↓
-Paste caption
-    ↓
-Upload one image
-    ↓
-Choose date and time
-    ↓
-Preview
-    ↓
-Save Draft or Schedule
-    ↓
-Backend validates request
-    ↓
-Dry run OR Meta Graph API
-    ↓
-Store status, response metadata, and errors
-```
+The operator supplies:
 
-## V1 Screens
+- a caption
+- exactly one JPEG or PNG image
+- a future date/time interpreted in `Asia/Dhaka`
 
-The first release needs only:
+The dashboard can save, list, view, edit, and dry-run schedule the post. A successful dry run leaves the post `ready`, records `external_request_made=false`, and never creates a Facebook identifier.
 
-1. **Overview** — basic connection and post-status summary.
-2. **New Post** — caption, image, date/time, preview, draft/schedule actions.
-3. **Posts** — list of draft, scheduled, published/confirmed, cancelled, and failed records known to our application.
-4. **Post Details** — content, image, timing, status, external ID, and error information.
-5. **Settings / Connection** — non-secret connection status and safe configuration information.
+Out of scope for this phase: Facebook API calls, real scheduling, analytics, comments, scoring, AI generation, multiple users, public signup, teams, billing, background workers, and paid infrastructure.
 
-A complex analytics dashboard is not part of V1.
-
-## Technology
-
-- React + TypeScript + Vite
-- FastAPI
-- SQLite
-- SQLAlchemy
-- Pydantic
-- `httpx`
-- Meta Graph API
-
-## Safe Default
-
-The application must start in dry-run mode:
+## Safety defaults
 
 ```env
 AUTOMATION_ENABLED=false
 PUBLISH_MODE=dry_run
+APP_TIMEZONE=Asia/Dhaka
+AUTH_REQUIRED=true
 ```
 
-In dry run, users can exercise the complete UI and local workflow, but no Facebook write request is made.
+Real Facebook writes remain impossible because no Facebook client exists. Future real scheduling must also require both `AUTOMATION_ENABLED=true` and `PUBLISH_MODE=facebook_schedule`.
 
-## Repository Documentation
-
-Read these before implementation:
-
-- `AGENTS.md`
-- `docs/MVP_SPEC.md`
-- `docs/ARCHITECTURE.md`
-- `docs/IMPLEMENTATION_PLAN.md`
-- `docs/SAFETY_RULES.md`
-
-## Current Scope
-
-V1 is single-user and local-first. It is intended to prove the scheduling core, not to ship a public SaaS product.
-
-## Phase 2/3 Local Workflow
-
-The repository now contains the complete local post-management and dry-run workflow:
-
-- a FastAPI backend with safe environment settings, SQLite/SQLAlchemy initialization, structured logging, local-development CORS, and health/system-status APIs
-- controlled JPEG/PNG storage with decoded-image, MIME, extension, filename, path, empty-file, and size validation
-- timezone-explicit local input converted to aware UTC for persistence
-- local post creation, listing, detail, editing, and controlled media APIs
-- a dry-run scheduling service with persisted attempt history and backend duplicate-attempt protection
-- a React + TypeScript + Vite dashboard with live forms, preview, posts, details, editing, dry-run results, and local operational counts
-- backend tests that require neither Facebook credentials, internet access, nor a Meta developer account
-
-A successful dry run leaves the post `ready`; it never uses the `scheduled` status reserved for future Meta acceptance. Every dry-run attempt records `external_request_made=false`, and no fake Facebook identifier is created. Facebook connection testing and real scheduling remain intentionally unimplemented.
-
-## Local Setup
+## Local setup
 
 Prerequisites:
 
-- Python 3.11 or newer
-- Node.js 20.19 or newer
+- Python 3.11+
+- Node.js 20.19+
+- access to the configured Supabase project
 
-Optional local configuration can be created from the safe example:
+Create backend configuration:
 
 ```bash
 cp .env.example .env
 ```
 
-The defaults work without a `.env` file and keep automation disabled in dry-run mode.
+Set `DATABASE_URL` to the Supabase shared session-pooler URL with TLS, then configure the Supabase URL, publishable key, secret key, Storage bucket, and authorized operator email. Never commit `.env`.
 
-### Backend
-
-From the repository root:
+Install and run the backend:
 
 ```bash
 cd backend
 python3 -m venv .venv
 source .venv/bin/activate
-python -m pip install --upgrade pip
 python -m pip install -e ".[dev]"
 uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 ```
 
-The backend is available at `http://127.0.0.1:8000`. Its current endpoints are:
-
-- `GET /api/health`
-- `GET /api/system/status`
-- `POST /api/posts`
-- `GET /api/posts`
-- `GET /api/posts/{id}`
-- `PATCH /api/posts/{id}`
-- `POST /api/posts/{id}/schedule`
-- `GET /api/media/{generated_filename}`
-
-Run backend tests from `backend/` with the virtual environment active:
+Create browser-safe frontend configuration:
 
 ```bash
-pytest
+cp frontend/.env.example frontend/.env.local
 ```
 
-### Frontend
-
-In a second terminal, from the repository root:
+Only set `VITE_API_BASE_URL`, `VITE_SUPABASE_URL`, and `VITE_SUPABASE_PUBLISHABLE_KEY` in that file. Then run:
 
 ```bash
 cd frontend
@@ -174,41 +82,64 @@ npm ci
 npm run dev
 ```
 
-Open `http://127.0.0.1:5173`. The frontend expects the backend at `http://127.0.0.1:8000` by default. A different backend URL may be supplied as the non-secret `VITE_API_BASE_URL` environment variable.
+Open `http://127.0.0.1:5173` and sign in with the authorized operator account.
 
-Build the frontend from `frontend/`:
+## Tests and build
 
 ```bash
+cd backend
+.venv/bin/python -m pytest -q
+.venv/bin/python -m compileall -q app tests
+
+cd ../frontend
 npm run build
 ```
 
-SQLite data is stored in `backend/data/app.db` by default. Validated images are stored under `backend/data/uploads/`. Both are intentionally ignored by Git except for the upload-directory placeholder.
+Backend tests use isolated SQLite databases and an in-memory fake Storage service. They do not require or mutate live Supabase resources and never make Facebook requests.
 
-## Phase 2/3 Project Structure
+## Supabase migrations
 
-```text
-backend/
-├── app/
-│   ├── api/
-│   ├── models/
-│   ├── schemas/
-│   ├── services/
-│   ├── config.py
-│   ├── database.py
-│   ├── logging_config.py
-│   └── main.py
-├── data/
-├── tests/
-└── pyproject.toml
-frontend/
-├── src/
-│   ├── api/
-│   ├── components/
-│   ├── pages/
-│   ├── state/
-│   ├── types/
-│   ├── utils/
-│   └── types/
-├── package.json
-└── vite.config.ts
+Reproducible SQL lives in `supabase/migrations/`. After linking the intended project:
+
+```bash
+supabase link --project-ref <project-ref>
+supabase db push
+supabase config push
 ```
+
+The migration creates `posts`, `scheduling_attempts`, indexes, restrictive RLS posture, and the private `post-images` bucket with a 5 MiB JPEG/PNG limit. Public signup is disabled in `supabase/config.toml`.
+
+## Deployment
+
+- Backend: `render.yaml` defines exactly one Singapore `plan: free` Python web service with no disk or Render datastore.
+- Frontend: build with the three browser-safe Vite variables and deploy `frontend/dist` using `npx wrangler pages deploy`.
+- Routing: `frontend/public/_redirects` provides the SPA fallback for nested-route refreshes.
+- CORS: production must set `FRONTEND_ORIGINS` to the exact Cloudflare Pages origin plus the two documented local development origins; wildcard CORS is not used.
+
+Deployment URLs and hosted acceptance status are recorded after the required free resources and operator account exist.
+
+## API
+
+Public:
+
+- `GET /api/health`
+
+Requires a valid authorized Supabase Bearer token:
+
+- `GET /api/system/status`
+- `POST /api/posts`
+- `GET /api/posts`
+- `GET /api/posts/{id}`
+- `PATCH /api/posts/{id}`
+- `POST /api/posts/{id}/schedule`
+- `GET /api/media/{object_path}`
+
+Private images are proxied through the authenticated backend. Supabase secret keys, database credentials, and Facebook tokens never enter the frontend.
+
+## Foundational documents
+
+- `AGENTS.md`
+- `docs/MVP_SPEC.md`
+- `docs/ARCHITECTURE.md`
+- `docs/IMPLEMENTATION_PLAN.md`
+- `docs/SAFETY_RULES.md`

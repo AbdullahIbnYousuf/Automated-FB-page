@@ -49,15 +49,16 @@ Use the following stack unless the architecture document is intentionally update
 
 - Frontend: React + TypeScript + Vite
 - Backend: Python + FastAPI
-- Persistence: SQLite
+- Persistence: Supabase PostgreSQL
 - ORM/data layer: SQLAlchemy
 - Validation: Pydantic
 - HTTP client: `httpx`
-- Image storage in V1: local filesystem, outside the frontend source tree
+- Image storage: private Supabase Storage, accessed by the backend
+- Authentication: Supabase Auth, one authorized operator
 - Facebook integration: official Meta Graph API only
 - Testing: `pytest` for backend; lightweight frontend tests where useful
 
-Keep dependencies minimal. Do not introduce Docker, Redis, Celery, PostgreSQL, Next.js, a component framework, or cloud infrastructure unless a later requirement genuinely needs them.
+Keep dependencies minimal. Do not introduce Docker, Redis, Celery, Next.js, a component framework, background workers, or additional cloud infrastructure unless a later requirement genuinely needs them.
 
 ## 5. Architecture Rules
 
@@ -68,6 +69,8 @@ Keep dependencies minimal. Do not introduce Docker, Redis, Celery, PostgreSQL, N
 - Scheduling domain logic must be testable without making a real Facebook request.
 - External API calls must be mockable.
 - The application must have a dry-run implementation path.
+- All operational APIs and private media must require a verified Supabase operator token; health may remain public.
+- Supabase/PostgreSQL/Render secrets must remain backend-only.
 - Store times internally in UTC; display and accept user times using the configured timezone, initially `Asia/Dhaka`.
 - Never rely on the browser's implicit timezone conversion without making the intended timezone explicit.
 
@@ -111,8 +114,8 @@ Do not implement these unless the user explicitly changes the MVP:
 - Multi-user authentication
 - Teams/workspaces
 - Billing
-- SaaS deployment
-- Cloud object storage
+- Multi-user SaaS behavior
+- Paid infrastructure or custom domains
 - Mobile application
 - Browser automation of Facebook
 

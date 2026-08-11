@@ -1,4 +1,4 @@
-"""Resource-oriented local post and dry-run scheduling routes."""
+"""Resource-oriented post and dry-run scheduling routes."""
 
 from typing import Annotated
 
@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, File, Form, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.config import Settings, get_settings
-from app.dependencies import get_database_session
+from app.dependencies import get_database_session, get_media_service, require_operator
 from app.schemas.post import (
     DryRunScheduleResponse,
     PostListResponse,
@@ -18,21 +18,26 @@ from app.services.post_service import PostService
 from app.services.scheduling_service import SchedulingService
 
 
-router = APIRouter(prefix="/api/posts", tags=["posts"])
+router = APIRouter(
+    prefix="/api/posts",
+    tags=["posts"],
+    dependencies=[Depends(require_operator)],
+)
 DatabaseSession = Annotated[Session, Depends(get_database_session)]
 ApplicationSettings = Annotated[Settings, Depends(get_settings)]
+ApplicationMedia = Annotated[MediaService, Depends(get_media_service)]
 
 
 @router.post("", response_model=PostResponse, status_code=status.HTTP_201_CREATED)
 async def create_post(
     session: DatabaseSession,
     settings: ApplicationSettings,
+    media_service: ApplicationMedia,
     caption: Annotated[str, Form()],
     scheduled_for_local: Annotated[str, Form()],
     timezone: Annotated[str, Form()],
     image: Annotated[UploadFile, File()],
 ) -> PostResponse:
-    media_service = MediaService(settings)
     stored_image = await media_service.store_upload(image)
     try:
         return PostService(session, settings).create_post(
@@ -42,7 +47,7 @@ async def create_post(
             timezone=timezone,
         )
     except Exception:
-        media_service.delete_stored_file(stored_image.filename)
+        await media_service.delete_object(stored_image.object_path)
         raise
 
 
@@ -74,9 +79,12 @@ def update_post(
 
 
 @router.post("/{post_id}/schedule", response_model=DryRunScheduleResponse)
-def schedule_post(
+async def schedule_post(
     post_id: str,
     session: DatabaseSession,
     settings: ApplicationSettings,
+    media_service: ApplicationMedia,
 ) -> DryRunScheduleResponse:
-    return SchedulingService(session, settings).schedule_post(post_id)
+    return await SchedulingService(
+        session, settings, media_service=media_service
+    ).schedule_post(post_id)

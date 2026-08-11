@@ -5,7 +5,9 @@ from zoneinfo import ZoneInfo
 
 from fastapi.testclient import TestClient
 
+from app.dependencies import get_media_service, require_operator
 from app.main import app
+from tests.conftest import InMemoryMediaService, authenticated_operator
 from tests.helpers import create_post, future_local_time
 
 
@@ -70,7 +72,11 @@ def test_unknown_post_returns_structured_404(client: TestClient) -> None:
     }
 
 
-def test_post_persists_across_application_restart() -> None:
+def test_post_persists_across_application_restart(
+    fake_media: InMemoryMediaService,
+) -> None:
+    app.dependency_overrides[get_media_service] = lambda: fake_media
+    app.dependency_overrides[require_operator] = authenticated_operator
     with TestClient(app) as first_client:
         post = create_post(first_client, caption="Persistent post").json()
         image_response = first_client.get(post["image_url"])

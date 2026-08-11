@@ -1,11 +1,41 @@
-"""FastAPI dependencies shared by resource routes."""
+"""FastAPI dependencies shared by protected resource routes."""
 
 from collections.abc import Iterator
 
+from fastapi import Depends
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
+from app.config import Settings, get_settings
 from app.database import session_scope
+from app.services.auth_service import AuthenticatedOperator, AuthService
+from app.services.errors import AppError
+from app.services.media_service import MediaService
+
+
+bearer_scheme = HTTPBearer(auto_error=False)
 
 
 def get_database_session() -> Iterator[Session]:
     yield from session_scope()
+
+
+def get_auth_service(settings: Settings = Depends(get_settings)) -> AuthService:
+    return AuthService(settings)
+
+
+def get_media_service(settings: Settings = Depends(get_settings)) -> MediaService:
+    return MediaService(settings)
+
+
+async def require_operator(
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+    auth_service: AuthService = Depends(get_auth_service),
+) -> AuthenticatedOperator:
+    if credentials is None or credentials.scheme.lower() != "bearer":
+        raise AppError(
+            code="AUTH_REQUIRED",
+            message="Sign in with the authorized operator account.",
+            status_code=401,
+        )
+    return await auth_service.authenticate(credentials.credentials)

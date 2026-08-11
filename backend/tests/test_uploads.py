@@ -6,6 +6,10 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.config import get_settings
+from app.dependencies import get_media_service
+from app.main import app
+from app.services.errors import AppError
+from tests.conftest import InMemoryMediaService
 from tests.helpers import create_post, image_bytes
 
 
@@ -73,17 +77,17 @@ def test_malformed_image_is_rejected(client: TestClient) -> None:
     assert response.json()["error"]["code"] == "INVALID_IMAGE"
 
 
-def test_path_traversal_filename_is_sanitized(client: TestClient) -> None:
+def test_path_traversal_filename_is_sanitized(
+    client: TestClient, fake_media: InMemoryMediaService
+) -> None:
     response = create_post(client, filename="../../outside.png")
 
     assert response.status_code == 201
     payload = response.json()
     assert payload["original_filename"] == "outside.png"
-    stored_filename = payload["image_url"].rsplit("/", 1)[-1]
-    assert re.fullmatch(r"[0-9a-f-]{36}\.png", stored_filename)
-    stored_path = (get_settings().upload_directory / stored_filename).resolve()
-    assert stored_path.parent == get_settings().upload_directory.resolve()
-    assert stored_path.is_file()
+    object_path = payload["image_url"].removeprefix("/api/media/")
+    assert re.fullmatch(r"posts/[0-9a-f-]{36}\.png", object_path)
+    assert object_path in fake_media.objects
 
 
 def test_stored_filename_is_server_generated(client: TestClient) -> None:
@@ -93,3 +97,26 @@ def test_stored_filename_is_server_generated(client: TestClient) -> None:
     assert response.status_code == 201
     assert stored_filename != "customer-photo.png"
     assert re.fullmatch(r"[0-9a-f-]{36}\.png", stored_filename)
+
+
+def test_storage_error_is_safely_reported(client: TestClient) -> None:
+    class FailingMediaService:
+        async def store_upload(self, upload):  # type: ignore[no-untyped-def]
+            del upload
+            raise AppError(
+                code="IMAGE_STORAGE_ERROR",
+                message="The image could not be stored. Try again.",
+                status_code=503,
+            )
+
+    app.dependency_overrides[get_media_service] = FailingMediaService
+    response = create_post(client)
+
+    assert response.status_code == 503
+    assert response.json() == {
+        "error": {
+            "code": "IMAGE_STORAGE_ERROR",
+            "message": "The image could not be stored. Try again.",
+        }
+    }
+    assert "test-secret-key" not in response.text

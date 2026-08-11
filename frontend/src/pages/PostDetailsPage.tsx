@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
-import { ApiError, mediaUrl } from "../api/client";
+import { ApiError } from "../api/client";
 import { getPost, runDryRunSchedule, updatePost } from "../api/posts";
+import { AuthenticatedImage } from "../components/AuthenticatedImage";
 import { AttemptStatusBadge, PostStatusBadge } from "../components/PostStatusBadge";
 import { useSystemStatus } from "../state/SystemStatusContext";
 import type { DryRunScheduleResult, PostRecord } from "../types/post";
@@ -64,7 +65,7 @@ export function PostDetailsPage() {
         timezone: post.display_timezone,
       });
       applyPost(updated);
-      setNotice("Changes saved locally. The post is a draft until dry-run validation runs again.");
+      setNotice("Changes saved. The post is a draft until dry-run validation runs again.");
       setDryRunResult(null);
     } catch (caught) {
       setError(caught instanceof ApiError ? caught.message : "Changes could not be saved.");
@@ -121,7 +122,7 @@ export function PostDetailsPage() {
     <div className="page-stack">
       <section className="detail-heading">
         <div>
-          <span className="eyebrow">Local post record</span>
+          <span className="eyebrow">Persistent post record</span>
           <h2>Post details</h2>
           <p className="record-id">Internal ID: {post.id}</p>
         </div>
@@ -139,7 +140,7 @@ export function PostDetailsPage() {
 
       <div className="detail-layout">
         <section className="detail-card detail-card--media">
-          <img src={mediaUrl(post.image_url)} alt="Uploaded post" />
+          <AuthenticatedImage path={post.image_url} alt="Uploaded post" />
           <div><span>Stored image</span><strong>{post.original_filename}</strong><small>{post.image_mime_type}</small></div>
         </section>
 
@@ -163,7 +164,7 @@ export function PostDetailsPage() {
 
       <section className="metadata-grid">
         <div><span>Local schedule</span><strong>{formatZonedDateTime(post.scheduled_for_utc, post.display_timezone)}</strong><small>{post.display_timezone}</small></div>
-        <div><span>UTC schedule</span><strong>{formatUtcDateTime(post.scheduled_for_utc)}</strong><small>Stored as timezone-aware UTC</small></div>
+        <div><span>UTC schedule</span><strong>{formatUtcDateTime(post.scheduled_for_utc)}</strong><small>Stored in PostgreSQL as aware UTC</small></div>
         <div><span>Created</span><strong>{formatZonedDateTime(post.created_at, post.display_timezone)}</strong></div>
         <div><span>Updated</span><strong>{formatZonedDateTime(post.updated_at, post.display_timezone)}</strong></div>
       </section>
@@ -173,7 +174,7 @@ export function PostDetailsPage() {
       ) : null}
 
       <section className="section-panel">
-        <div className="section-heading"><div><span className="eyebrow">Immutable local history</span><h2>Scheduling attempts</h2></div><span className="phase-badge">{post.attempts.length} total</span></div>
+        <div className="section-heading"><div><span className="eyebrow">Immutable attempt history</span><h2>Scheduling attempts</h2></div><span className="phase-badge">{post.attempts.length} total</span></div>
         {post.attempts.length === 0 ? (
           <p className="muted-copy">No dry-run attempts have been recorded.</p>
         ) : (

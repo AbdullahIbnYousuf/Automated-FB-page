@@ -13,6 +13,8 @@ export interface FacebookConfigurationStatus {
 
 export interface SystemStatus {
   application_mode: string;
+  authentication_required: boolean;
+  supabase_configured: boolean;
   publish_mode: PublishMode;
   automation_enabled: boolean;
   publishing_enabled: boolean;

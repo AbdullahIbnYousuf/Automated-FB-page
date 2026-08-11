@@ -1,4 +1,4 @@
-"""Typed request and response contracts for local posts."""
+"""Typed request and response contracts for persisted posts."""
 
 from datetime import datetime
 

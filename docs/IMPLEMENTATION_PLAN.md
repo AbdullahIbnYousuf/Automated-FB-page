@@ -1,5 +1,14 @@
 # Implementation Plan — Scheduler V1
 
+## Current status
+
+- Phase 0: complete
+- Phase 1: complete
+- Phase 2: complete
+- Phase 3: complete
+- Hosted Migration + Deployment: implementation complete; cloud provisioning/acceptance pending the required Supabase project/operator secret setup
+- Phase 4 and later: not started
+
 ## Principle
 
 Build vertically in small, testable phases. Do not build the entire roadmap in one Codex prompt.
@@ -45,9 +54,9 @@ Exit condition:
 - frontend can display backend health
 - backend tests run
 
-## Phase 2 — Local Post Creation and Persistence
+## Phase 2 — Post Creation and Persistence
 
-Goal: complete the local content workflow.
+Goal: complete the content workflow. This phase originally used local persistence and was later migrated to Supabase by the hosted phase.
 
 Implement:
 
@@ -87,6 +96,36 @@ Implement:
 Exit condition:
 
 The GUI can “schedule” a stored post end-to-end while making zero Meta write requests.
+
+## Hosted Migration + Deployment — Supabase, Render, and Cloudflare
+
+Goal: securely expose the complete Phase 1–3 dashboard to one operator while remaining on free tiers and without advancing to Facebook Phase 4.
+
+Implement:
+
+- Supabase PostgreSQL as the authoritative application database
+- committed migrations for `posts` and `scheduling_attempts`
+- one private Supabase Storage bucket for validated post images
+- Supabase email/password Auth with one authorized operator and public signup disabled
+- Bearer authentication on every operational/system/media API except public health
+- authenticated private-image proxying through FastAPI
+- Cloudflare Pages deployment for the existing Vite UI
+- one Render Free web service for FastAPI with no disk or Render datastore
+- exact production/local CORS origins
+- responsive operator login and existing phone-ready dashboard flow
+- updated tests, environment examples, and deployment documentation
+
+Safety requirements:
+
+- keep `AUTOMATION_ENABLED=false` and `PUBLISH_MODE=dry_run`
+- do not add or invoke a Facebook client
+- do not expose database, Storage, Render, or Facebook secrets to Vite
+- do not enable any paid resource or billing feature
+- retain old physical SQLite/upload data as rollback evidence
+
+Exit condition:
+
+The Cloudflare Pages URL loads over HTTPS, authentication gates the dashboard, authenticated post/image/edit/dry-run flows persist through Supabase, sign-out removes access, and hosted evidence confirms `external_request_made=false` and `facebook_object_id=null`.
 
 ## Phase 4 — Facebook Configuration and Connection Test
 
