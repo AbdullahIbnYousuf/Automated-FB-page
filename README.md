@@ -1,6 +1,6 @@
 # Facebook Page Operations Dashboard
 
-A single-operator web dashboard for managing already-created Facebook Page content. Phases 1–3 provide draft creation, one-image upload, timezone-safe scheduling data, post management, and dry-run scheduling. Facebook/Meta integration is intentionally not implemented yet.
+A single-operator web dashboard for managing already-created Facebook Page content. Phases 1–3 provide draft creation, one-image upload, timezone-safe scheduling data, post management, and dry-run scheduling. Phase 4 adds a secure, read-only Facebook Page connection test through the official Meta Graph API.
 
 ## Current architecture
 
@@ -10,6 +10,7 @@ Browser / phone
 Cloudflare Pages — React + TypeScript + Vite
     ↓ Bearer token from Supabase Auth
 Render Free Web Service — FastAPI
+    ├── read-only GET → Meta Graph API
     ↓
 Supabase Free
 ├── PostgreSQL — posts and scheduling_attempts
@@ -27,9 +28,9 @@ The operator supplies:
 - exactly one JPEG or PNG image
 - a future date/time interpreted in `Asia/Dhaka`
 
-The dashboard can save, list, view, edit, and dry-run schedule the post. A successful dry run leaves the post `ready`, records `external_request_made=false`, and never creates a Facebook identifier.
+The dashboard can save, list, view, edit, and dry-run schedule the post. A successful dry run leaves the post `ready`, records `external_request_made=false`, and never creates a Facebook identifier. Settings can explicitly test the configured Facebook Page by reading only its `id` and `name`.
 
-Out of scope for this phase: Facebook API calls, real scheduling, analytics, comments, scoring, AI generation, multiple users, public signup, teams, billing, background workers, and paid infrastructure.
+Out of scope for this phase: Facebook writes or real scheduling, analytics, comments, scoring, AI generation, multiple users, public signup, teams, billing, background workers, and paid infrastructure.
 
 ## Safety defaults
 
@@ -40,7 +41,7 @@ APP_TIMEZONE=Asia/Dhaka
 AUTH_REQUIRED=true
 ```
 
-Real Facebook writes remain impossible because no Facebook client exists. Future real scheduling must also require both `AUTOMATION_ENABLED=true` and `PUBLISH_MODE=facebook_schedule`.
+Real Facebook writes remain impossible because the Phase 4 client implements only one read-only Page identity request. Future real scheduling must also require both `AUTOMATION_ENABLED=true` and `PUBLISH_MODE=facebook_schedule`.
 
 ## Local setup
 
@@ -56,7 +57,7 @@ Create backend configuration:
 cp .env.example .env
 ```
 
-Set `DATABASE_URL` to the Supabase shared session-pooler URL with TLS, then configure the Supabase URL, publishable key, secret key, Storage bucket, and authorized operator email. Never commit `.env`.
+Set `DATABASE_URL` to the Supabase shared session-pooler URL with TLS, then configure the Supabase URL, publishable key, secret key, Storage bucket, and authorized operator email. For a Facebook connection test, also configure the Graph API version, Page ID, and Page access token. Never commit `.env`.
 
 Install and run the backend:
 
@@ -95,7 +96,7 @@ cd ../frontend
 npm run build
 ```
 
-Backend tests use isolated SQLite databases and an in-memory fake Storage service. They do not require or mutate live Supabase resources and never make Facebook requests.
+Backend tests use isolated SQLite databases, an in-memory fake Storage service, and mocked Meta transports. They do not require or mutate live Supabase resources and never make a real Facebook request.
 
 ## Supabase migrations
 
@@ -119,7 +120,18 @@ The migration creates `posts`, `scheduling_attempts`, indexes, restrictive RLS p
 - Routing: `frontend/public/_redirects` provides the SPA fallback for nested-route refreshes.
 - CORS: production must set `FRONTEND_ORIGINS` to the exact Cloudflare Pages origin plus the two documented local development origins; wildcard CORS is not used.
 
-The schema, private bucket, Render service, and Pages site are live. An operator invitation has been sent to the allowlisted email; authenticated end-to-end acceptance remains pending until that operator privately chooses a password from the invitation link.
+The schema, private bucket, Render service, Pages site, and single-operator authentication are live.
+
+Facebook secrets belong only on Render:
+
+```env
+FACEBOOK_GRAPH_API_VERSION=v26.0
+FACEBOOK_PAGE_ID=
+FACEBOOK_PAGE_ACCESS_TOKEN=
+FACEBOOK_REQUEST_TIMEOUT_SECONDS=10
+```
+
+Never add these values to Cloudflare Pages, Vite variables, Supabase rows, commits, screenshots, or chat. See [docs/META_SETUP.md](docs/META_SETUP.md) for the manual Meta-side setup.
 
 ## API
 
@@ -130,6 +142,8 @@ Public:
 Requires a valid authorized Supabase Bearer token:
 
 - `GET /api/system/status`
+- `GET /api/facebook/status` — local safe status; no Meta request
+- `POST /api/facebook/test-connection` — explicit read-only Meta request
 - `POST /api/posts`
 - `GET /api/posts`
 - `GET /api/posts/{id}`
@@ -138,6 +152,8 @@ Requires a valid authorized Supabase Bearer token:
 - `GET /api/media/{object_path}`
 
 Private images are proxied through the authenticated backend. Supabase secret keys, database credentials, and Facebook tokens never enter the frontend.
+
+The connection test targets Graph API `v26.0` and sends exactly `GET /v26.0/{page-id}?fields=id,name` with the Page token in the HTTPS `Authorization` header. Success proves Page identity/read access only. It does not prove `pages_manage_posts` or future publishing capability.
 
 The current hosted Storage service requires the backend-only legacy `service_role` JWT for its `Authorization` header. It is stored under the generic `SUPABASE_SECRET_KEY` server variable because the newer opaque scoped secret is not accepted by this Storage endpoint version. The legacy key is never exposed to Vite or committed.
 

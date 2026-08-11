@@ -1,6 +1,7 @@
 """FastAPI dependencies shared by protected resource routes."""
 
 from collections.abc import Iterator
+from functools import lru_cache
 
 from fastapi import Depends
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -8,8 +9,10 @@ from sqlalchemy.orm import Session
 
 from app.config import Settings, get_settings
 from app.database import session_scope
+from app.integrations.facebook.client import FacebookClient
 from app.services.auth_service import AuthenticatedOperator, AuthService
 from app.services.errors import AppError
+from app.services.facebook_connection_service import FacebookConnectionService
 from app.services.media_service import MediaService
 
 
@@ -26,6 +29,12 @@ def get_auth_service(settings: Settings = Depends(get_settings)) -> AuthService:
 
 def get_media_service(settings: Settings = Depends(get_settings)) -> MediaService:
     return MediaService(settings)
+
+
+@lru_cache
+def get_facebook_connection_service() -> FacebookConnectionService:
+    settings = get_settings()
+    return FacebookConnectionService(settings, FacebookClient(settings))
 
 
 async def require_operator(

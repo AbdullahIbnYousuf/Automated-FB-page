@@ -23,10 +23,10 @@ Keep the scheduling core small, explicit, testable, and safe while making the cu
 │ posts + attempts    │  │ private post-images  │
 └─────────────────────┘  └──────────────────────┘
                │
-               ▼ future only
+               ▼ Phase 4 read-only
 ┌───────────────────────────────────────┐
 │ Facebook integration service         │
-│ official Meta Graph API only         │
+│ GET Page id/name; official API only  │
 └───────────────────────────────────────┘
 ```
 
@@ -75,7 +75,7 @@ The backend owns:
 - authenticated media proxying
 - dry-run scheduling and immutable attempt history
 - safe configuration/status responses and structured logs
-- future Facebook integration behind a dedicated service boundary
+- read-only Facebook Page connection testing behind a dedicated integration and service boundary
 
 `GET /api/health` is public. System status, posts, scheduling, and media routes require an authenticated authorized operator.
 
@@ -163,11 +163,20 @@ attempt.external_request_made = false
 post.facebook_object_id = null
 ```
 
-No Facebook client exists in the hosted migration phase.
+The dry-run scheduler has no dependency on the Facebook client and makes no external request.
 
-## 9. Future Facebook boundary
+## 9. Facebook boundary
 
-Phase 4 may add configuration and a read-only Page connection test. Phase 5 may add one real scheduled image post only after current official Meta documentation is re-verified.
+Phase 4 implements one explicit read-only request:
+
+```text
+GET https://graph.facebook.com/v26.0/{page-id}?fields=id,name
+Authorization: Bearer <Page access token>
+```
+
+The token and Page ID come from Render/backend environment configuration. The token never appears in a URL, frontend build, API response, database row, or normal log. `GET /api/facebook/status` reads only safe local state. `POST /api/facebook/test-connection` performs the Meta request and retains the last sanitized result only for the backend process lifetime.
+
+Phase 5 may add one real scheduled image post only after current official Meta documentation is re-verified.
 
 Any future write remains backend-only and requires both:
 

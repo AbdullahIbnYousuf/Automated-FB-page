@@ -1,4 +1,8 @@
+import { useState } from "react";
+
+import { ApiError } from "../api/client";
 import { useSystemStatus } from "../state/SystemStatusContext";
+import type { FacebookConnectionStatus } from "../types/facebook";
 
 function ConfigurationRow({
   label,
@@ -21,8 +25,44 @@ function ConfigurationRow({
 }
 
 export function SettingsPage() {
-  const { backendState, status } = useSystemStatus();
+  const {
+    backendState,
+    facebookConnection,
+    status,
+    testFacebookConnection,
+  } = useSystemStatus();
+  const [testing, setTesting] = useState(false);
+  const [feedback, setFeedback] = useState<FacebookConnectionStatus | null>(null);
+  const [requestError, setRequestError] = useState<string | null>(null);
   const unavailable = backendState !== "available" || !status;
+
+  async function runConnectionTest() {
+    setTesting(true);
+    setFeedback(null);
+    setRequestError(null);
+    try {
+      setFeedback(await testFacebookConnection());
+    } catch (caught) {
+      setRequestError(
+        caught instanceof ApiError
+          ? caught.message
+          : "The Facebook connection test could not be completed.",
+      );
+    } finally {
+      setTesting(false);
+    }
+  }
+
+  const activeResult = feedback ?? facebookConnection;
+  const connectionLabel = activeResult?.connected
+    ? "Connected"
+    : activeResult?.status === "not_configured"
+      ? "Not configured"
+      : activeResult?.status === "not_verified"
+        ? "Not verified"
+        : activeResult
+          ? "Error"
+          : "Unknown";
 
   return (
     <div className="page-stack">
@@ -30,8 +70,8 @@ export function SettingsPage() {
         <span className="eyebrow">Read-only configuration</span>
         <h2>Settings / Connection</h2>
         <p>
-          This page reports safe backend configuration only. Credentials cannot
-          be entered, viewed, changed, or validated from the browser.
+          Credentials remain backend-only. The connection test asks the backend
+          to read only the configured Page name and ID from Meta.
         </p>
       </section>
 
@@ -57,9 +97,9 @@ export function SettingsPage() {
           value={
             unavailable
               ? "Unknown"
-              : status.facebook.page_id_configured
+              : facebookConnection?.page_id_configured
                 ? "Configured"
-                : "Not configured"
+                : "Missing"
           }
           detail="Only configuration presence is exposed"
         />
@@ -68,21 +108,33 @@ export function SettingsPage() {
           value={
             unavailable
               ? "Unknown"
-              : status.facebook.access_token_configured
+              : facebookConnection?.access_token_configured
                 ? "Configured"
-                : "Not configured"
+                : "Missing"
           }
           detail="The token value remains backend-only"
         />
         <ConfigurationRow
-          label="Publish mode"
-          value={status?.publish_mode.replaceAll("_", " ") ?? "Unknown"}
-          detail="Real writes require two explicit backend switches"
+          label="Connection"
+          value={connectionLabel}
+          detail="Last explicit read-only Meta connection result"
         />
+        {activeResult?.page ? (
+          <ConfigurationRow
+            label="Connected Page"
+            value={activeResult.page.name}
+            detail={`Page ID ${activeResult.page.id}`}
+          />
+        ) : null}
         <ConfigurationRow
           label="Graph API version"
-          value={status?.graph_api_version ?? "Unknown"}
-          detail="Informational only; no Facebook client exists in Phase 2/3"
+          value={activeResult?.api_version ?? status?.graph_api_version ?? "Unknown"}
+          detail="Explicitly versioned read-only Graph API request"
+        />
+        <ConfigurationRow
+          label="Publishing"
+          value={status?.publishing_enabled ? "Enabled" : "Disabled / Dry Run"}
+          detail="Phase 4 does not contain a Facebook write implementation"
         />
         <ConfigurationRow
           label="Application timezone"
@@ -90,6 +142,38 @@ export function SettingsPage() {
           detail="Future local schedule input will use this IANA timezone"
         />
       </section>
+
+      <section className="section-panel connection-test-panel">
+        <div>
+          <span className="eyebrow">Facebook Page</span>
+          <h2>Test Facebook Connection</h2>
+          <p>
+            This test is read-only. It will not publish, edit, schedule, or
+            delete Facebook content.
+          </p>
+        </div>
+        <button
+          className="primary-button"
+          type="button"
+          disabled={unavailable || testing}
+          onClick={() => void runConnectionTest()}
+        >
+          {testing ? "Testing connection…" : "Test Facebook Connection"}
+        </button>
+      </section>
+
+      {requestError || feedback ? (
+        <section
+          className={`notice ${feedback?.connected ? "" : "notice--error"}`.trim()}
+          role="status"
+        >
+          <div className="notice__icon">{feedback?.connected ? "✓" : "!"}</div>
+          <div>
+            <h3>{feedback?.connected ? "Connected" : "Connection not verified"}</h3>
+            <p>{requestError ?? feedback?.message}</p>
+          </div>
+        </section>
+      ) : null}
     </div>
   );
 }

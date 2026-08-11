@@ -10,6 +10,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from app.api.facebook import router as facebook_router
 from app.api.health import router as health_router
 from app.api.media import router as media_router
 from app.api.posts import router as posts_router
@@ -48,7 +49,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(
     title=settings.application_name,
-    version="0.4.0",
+    version="0.5.0",
     lifespan=lifespan,
 )
 
@@ -118,5 +119,6 @@ async def log_request(request: Request, call_next) -> Response:  # type: ignore[
 
 app.include_router(health_router)
 app.include_router(system_router)
+app.include_router(facebook_router)
 app.include_router(posts_router)
 app.include_router(media_router)

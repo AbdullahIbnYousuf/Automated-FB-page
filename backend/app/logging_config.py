@@ -21,6 +21,8 @@ class JsonFormatter(logging.Formatter):
         "attempt_id",
         "result",
         "external_request_made",
+        "facebook_status",
+        "meta_error_code",
     )
 
     def format(self, record: logging.LogRecord) -> str:

@@ -1,3 +1,5 @@
+import type { FacebookConnectionStatus } from "./facebook";
+
 export type PublishMode = "dry_run" | "facebook_schedule";
 
 export interface HealthStatus {
@@ -26,4 +28,5 @@ export interface SystemStatus {
 export interface SystemSnapshot {
   health: HealthStatus;
   status: SystemStatus;
+  facebook: FacebookConnectionStatus;
 }

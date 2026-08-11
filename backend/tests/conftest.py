@@ -7,7 +7,11 @@ from fastapi.testclient import TestClient
 
 from app.config import Settings, get_settings
 from app.database import get_engine, get_session_factory
-from app.dependencies import get_media_service, require_operator
+from app.dependencies import (
+    get_facebook_connection_service,
+    get_media_service,
+    require_operator,
+)
 from app.main import app
 from app.services.auth_service import AuthenticatedOperator
 from app.services.errors import AppError
@@ -32,6 +36,7 @@ ENVIRONMENT_KEYS = (
     "FACEBOOK_GRAPH_API_VERSION",
     "FACEBOOK_PAGE_ID",
     "FACEBOOK_PAGE_ACCESS_TOKEN",
+    "FACEBOOK_REQUEST_TIMEOUT_SECONDS",
 )
 
 
@@ -95,6 +100,7 @@ def isolated_environment(
     monkeypatch.setenv("SUPABASE_PUBLISHABLE_KEY", "test-publishable-key")
     monkeypatch.setenv("SUPABASE_SECRET_KEY", "test-secret-key")
     get_settings.cache_clear()
+    get_facebook_connection_service.cache_clear()
     get_session_factory.cache_clear()
     get_engine.cache_clear()
     yield
@@ -102,6 +108,7 @@ def isolated_environment(
     get_engine(settings.require_database_url()).dispose()
     app.dependency_overrides.clear()
     get_settings.cache_clear()
+    get_facebook_connection_service.cache_clear()
     get_session_factory.cache_clear()
     get_engine.cache_clear()
 

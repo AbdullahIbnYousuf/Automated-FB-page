@@ -54,6 +54,7 @@ class Settings(BaseSettings):
     facebook_graph_api_version: str = "v26.0"
     facebook_page_id: str | None = None
     facebook_page_access_token: SecretStr | None = None
+    facebook_request_timeout_seconds: float = 10.0
 
     @property
     def publishing_enabled(self) -> bool:

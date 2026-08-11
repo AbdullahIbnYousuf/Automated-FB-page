@@ -6,8 +6,9 @@
 - Phase 1: complete
 - Phase 2: complete
 - Phase 3: complete
-- Hosted Migration + Deployment: Supabase, Render, and Cloudflare are deployed; final authenticated acceptance is pending operator invitation acceptance/password choice
-- Phase 4 and later: not started
+- Hosted Migration + Deployment: complete; Supabase, Render, Cloudflare, and single-operator authentication are live
+- Phase 4: implemented; hosted valid-credential verification awaits manual Meta Page token setup
+- Phase 5 and later: not started
 
 ## Principle
 
@@ -143,6 +144,14 @@ Implement:
 - Settings/Connection screen
 - meaningful auth/permission/config errors
 - mocked client tests
+
+Implementation notes:
+
+- Graph API version verified against current official Meta documentation: `v26.0`
+- connection request: read-only Page `id,name` lookup with a Page access token
+- token transport: HTTPS `Authorization` header, never the URL
+- safe last-check state is process-local and resets to `not_verified` after backend restart
+- publishing capability remains explicitly unverified
 
 Important:
 

@@ -28,6 +28,10 @@ services:
         value: "40000000"
       - key: SUPABASE_STORAGE_BUCKET
         value: post-images
+      - key: FACEBOOK_GRAPH_API_VERSION
+        value: v26.0
+      - key: FACEBOOK_REQUEST_TIMEOUT_SECONDS
+        value: "10"
       - key: DATABASE_URL
         sync: false
       - key: FRONTEND_ORIGINS
@@ -39,4 +43,8 @@ services:
       - key: SUPABASE_PUBLISHABLE_KEY
         sync: false
       - key: SUPABASE_SECRET_KEY
+        sync: false
+      - key: FACEBOOK_PAGE_ID
+        sync: false
+      - key: FACEBOOK_PAGE_ACCESS_TOKEN
         sync: false

@@ -14,7 +14,12 @@ function readableMode(mode: string): string {
 }
 
 export function OverviewPage() {
-  const { backendState, status, refresh: refreshSystem } = useSystemStatus();
+  const {
+    backendState,
+    facebookConnection,
+    status,
+    refresh: refreshSystem,
+  } = useSystemStatus();
   const [posts, setPosts] = useState<PostRecord[]>([]);
   const [postError, setPostError] = useState<string | null>(null);
 
@@ -80,7 +85,7 @@ export function OverviewPage() {
         <article className="status-card"><span className="status-card__label">Ready</span><strong>{counts.ready}</strong><small>Locally validated, not Facebook-scheduled</small></article>
         <article className="status-card"><span className="status-card__label">Dry runs completed</span><strong>{counts.dryRuns}</strong><small>Simulated successes</small></article>
         <article className="status-card"><span className="status-card__label">Timezone</span><strong>{status?.timezone ?? "Unknown"}</strong><small>Explicit operator timezone</small></article>
-        <article className="status-card"><span className="status-card__label">Facebook configuration</span><strong>{status ? status.facebook.fully_configured ? "Configured" : "Not configured" : "Unknown"}</strong><small>Presence only; no connection call</small></article>
+        <article className="status-card"><span className="status-card__label">Facebook Page</span><strong>{facebookConnection?.connected ? "Connected" : facebookConnection?.status === "not_configured" ? "Not configured" : facebookConnection ? "Not verified" : "Unknown"}</strong><small>{facebookConnection?.page?.name ?? "No Meta request on page load"}</small></article>
       </section>
 
       <section className="section-panel">
