@@ -48,7 +48,7 @@ class PostUpdateRequest(BaseModel):
     timezone: str | None = None
 
 
-class DryRunScheduleResponse(BaseModel):
+class ScheduleResponse(BaseModel):
     mode: SchedulingMode
     simulated: bool
     success: bool
@@ -56,4 +56,8 @@ class DryRunScheduleResponse(BaseModel):
     attempt_id: str
     post_status: PostStatus
     external_request_made: bool
+    facebook_object_id: str | None = None
     message: str
+
+
+DryRunScheduleResponse = ScheduleResponse

@@ -153,10 +153,13 @@ class PostService:
             PostStatus.SCHEDULING,
             PostStatus.SCHEDULED,
             PostStatus.CANCELLED,
-        }:
+        } or post.last_error_code == "FACEBOOK_OUTCOME_UNKNOWN":
             raise AppError(
                 code="INVALID_POST_STATE",
-                message="This post cannot be edited in its current state.",
+                message=(
+                    "This post cannot be edited in its current state. Check Meta first "
+                    "if the Facebook scheduling outcome is unknown."
+                ),
                 status_code=409,
             )
         if update.caption is None and update.scheduled_for_local is None:

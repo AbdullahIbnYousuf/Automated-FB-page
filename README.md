@@ -1,6 +1,6 @@
 # Facebook Page Operations Dashboard
 
-A single-operator web dashboard for managing already-created Facebook Page content. Phases 1–3 provide draft creation, one-image upload, timezone-safe scheduling data, post management, and dry-run scheduling. Phase 4 adds a secure, read-only Facebook Page connection test through the official Meta Graph API.
+A single-operator web dashboard for managing already-created Facebook Page content. Phases 1–4 provide the hosted content workflow, dry-run scheduling, and a secure Page connection test. Phase 5 adds one guarded capability: scheduling an existing caption and one image to the configured Facebook Page through the official Meta Graph API.
 
 ## Current architecture
 
@@ -10,7 +10,8 @@ Browser / phone
 Cloudflare Pages — React + TypeScript + Vite
     ↓ Bearer token from Supabase Auth
 Render Free Web Service — FastAPI
-    ├── read-only GET → Meta Graph API
+    ├── read-only Page identity GET
+    └── guarded scheduled-photo POST → Meta Graph API
     ↓
 Supabase Free
 ├── PostgreSQL — posts and scheduling_attempts
@@ -28,9 +29,9 @@ The operator supplies:
 - exactly one JPEG or PNG image
 - a future date/time interpreted in `Asia/Dhaka`
 
-The dashboard can save, list, view, edit, and dry-run schedule the post. A successful dry run leaves the post `ready`, records `external_request_made=false`, and never creates a Facebook identifier. Settings can explicitly test the configured Facebook Page by reading only its `id` and `name`.
+The dashboard can save, list, view, edit, and schedule the post. In safe defaults, scheduling is simulated: the post remains `ready`, `external_request_made=false`, and no Facebook identifier is created. When both backend write switches are intentionally enabled, the same endpoint uploads the validated private image bytes and schedules one Page photo. Only Meta-confirmed acceptance produces `scheduled` and a stored Facebook reference.
 
-Out of scope for this phase: Facebook writes or real scheduling, analytics, comments, scoring, AI generation, multiple users, public signup, teams, billing, background workers, and paid infrastructure.
+Out of scope: immediate publishing, remote edit/cancellation/deletion, automatic write retries, analytics, comments, scoring, AI generation, multiple users, public signup, teams, billing, background workers, and paid infrastructure.
 
 ## Safety defaults
 
@@ -41,7 +42,7 @@ APP_TIMEZONE=Asia/Dhaka
 AUTH_REQUIRED=true
 ```
 
-Real Facebook writes remain impossible because the Phase 4 client implements only one read-only Page identity request. Future real scheduling must also require both `AUTOMATION_ENABLED=true` and `PUBLISH_MODE=facebook_schedule`.
+Real Facebook scheduling remains blocked unless both `AUTOMATION_ENABLED=true` and `PUBLISH_MODE=facebook_schedule`. Credentials alone never enable writes. Mixed configuration fails closed, and write requests are never automatically retried.
 
 ## Local setup
 
@@ -96,7 +97,7 @@ cd ../frontend
 npm run build
 ```
 
-Backend tests use isolated SQLite databases, an in-memory fake Storage service, and mocked Meta transports. They do not require or mutate live Supabase resources and never make a real Facebook request.
+Backend tests use isolated SQLite databases, an in-memory fake Storage service, and mocked Meta transports. They do not require or mutate live Supabase resources and never create a real Facebook post.
 
 ## Supabase migrations
 
@@ -148,12 +149,14 @@ Requires a valid authorized Supabase Bearer token:
 - `GET /api/posts`
 - `GET /api/posts/{id}`
 - `PATCH /api/posts/{id}`
-- `POST /api/posts/{id}/schedule`
+- `POST /api/posts/{id}/schedule` — backend selects dry run or guarded Facebook scheduling
 - `GET /api/media/{object_path}`
 
 Private images are proxied through the authenticated backend. Supabase secret keys, database credentials, and Facebook tokens never enter the frontend.
 
-The connection test targets Graph API `v26.0` and sends exactly `GET /v26.0/{page-id}?fields=id,name` with the Page token in the HTTPS `Authorization` header. Success proves Page identity/read access only. It does not prove `pages_manage_posts` or future publishing capability.
+The connection test targets Graph API `v26.0` and sends exactly `GET /v26.0/{page-id}?fields=id,name` with the Page token in the HTTPS `Authorization` header.
+
+Real mode sends one multipart `POST /v26.0/{page-id}/photos` containing `source`, `caption`, `published=false`, `scheduled_publish_time` as whole Unix seconds, and `unpublished_content_type=SCHEDULED`. The documented scheduling window is at least 10 minutes and no more than 30 days from the request; the backend adds a small minimum-boundary buffer. The token remains only in the authorization header. A transport timeout/reset becomes `FACEBOOK_OUTCOME_UNKNOWN` and the record cannot be resubmitted automatically or manually through the current UI.
 
 The current hosted Storage service requires the backend-only legacy `service_role` JWT for its `Authorization` header. It is stored under the generic `SUPABASE_SECRET_KEY` server variable because the newer opaque scoped secret is not accepted by this Storage endpoint version. The legacy key is never exposed to Vite or committed.
 

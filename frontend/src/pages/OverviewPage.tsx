@@ -43,9 +43,13 @@ export function OverviewPage() {
       ready: posts.filter((post) => post.status === "ready").length,
       dryRuns: posts.reduce(
         (total, post) =>
-          total + post.attempts.filter((attempt) => attempt.result === "success").length,
+          total + post.attempts.filter(
+            (attempt) => attempt.mode === "dry_run" && attempt.result === "success",
+          ).length,
         0,
       ),
+      scheduled: posts.filter((post) => post.status === "scheduled").length,
+      failed: posts.filter((post) => post.status === "failed").length,
     }),
     [posts],
   );
@@ -61,8 +65,8 @@ export function OverviewPage() {
           <span className="eyebrow">Hosted operations snapshot</span>
           <h2>Control content before anything reaches Facebook.</h2>
           <p>
-            Drafts, private images, schedules, and dry-run attempts persist in Supabase.
-            Simulation validates the workflow without a Facebook write.
+            Drafts, private images, schedules, and immutable attempts persist in Supabase.
+            The backend selects dry run or guarded Facebook scheduling.
           </p>
         </div>
         <button className="secondary-button" type="button" onClick={() => void refreshAll()}>
@@ -84,6 +88,8 @@ export function OverviewPage() {
         <article className="status-card"><span className="status-card__label">Drafts</span><strong>{counts.drafts}</strong><small>Awaiting dry-run validation</small></article>
         <article className="status-card"><span className="status-card__label">Ready</span><strong>{counts.ready}</strong><small>Locally validated, not Facebook-scheduled</small></article>
         <article className="status-card"><span className="status-card__label">Dry runs completed</span><strong>{counts.dryRuns}</strong><small>Simulated successes</small></article>
+        <article className="status-card"><span className="status-card__label">Facebook scheduled</span><strong>{counts.scheduled}</strong><small>Confirmed Meta acceptance</small></article>
+        <article className="status-card"><span className="status-card__label">Failed</span><strong>{counts.failed}</strong><small>Review safe attempt details</small></article>
         <article className="status-card"><span className="status-card__label">Timezone</span><strong>{status?.timezone ?? "Unknown"}</strong><small>Explicit operator timezone</small></article>
         <article className="status-card"><span className="status-card__label">Facebook Page</span><strong>{facebookConnection?.connected ? "Connected" : facebookConnection?.status === "not_configured" ? "Not configured" : facebookConnection ? "Not verified" : "Unknown"}</strong><small>{facebookConnection?.page?.name ?? "No Meta request on page load"}</small></article>
       </section>

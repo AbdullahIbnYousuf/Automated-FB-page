@@ -1,5 +1,5 @@
 import type {
-  DryRunScheduleResult,
+  ScheduleResult,
   PostListResponse,
   PostRecord,
   PostUpdateInput,
@@ -44,10 +44,8 @@ export function updatePost(
   });
 }
 
-export function runDryRunSchedule(
-  postId: string,
-): Promise<DryRunScheduleResult> {
-  return apiRequest<DryRunScheduleResult>(`/api/posts/${postId}/schedule`, {
+export function schedulePost(postId: string): Promise<ScheduleResult> {
+  return apiRequest<ScheduleResult>(`/api/posts/${postId}/schedule`, {
     method: "POST",
   });
 }

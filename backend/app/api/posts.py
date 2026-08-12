@@ -8,10 +8,10 @@ from sqlalchemy.orm import Session
 from app.config import Settings, get_settings
 from app.dependencies import get_database_session, get_media_service, require_operator
 from app.schemas.post import (
-    DryRunScheduleResponse,
     PostListResponse,
     PostResponse,
     PostUpdateRequest,
+    ScheduleResponse,
 )
 from app.services.media_service import MediaService
 from app.services.post_service import PostService
@@ -78,13 +78,13 @@ def update_post(
     return PostService(session, settings).update_post(post_id, update)
 
 
-@router.post("/{post_id}/schedule", response_model=DryRunScheduleResponse)
+@router.post("/{post_id}/schedule", response_model=ScheduleResponse)
 async def schedule_post(
     post_id: str,
     session: DatabaseSession,
     settings: ApplicationSettings,
     media_service: ApplicationMedia,
-) -> DryRunScheduleResponse:
+) -> ScheduleResponse:
     return await SchedulingService(
         session, settings, media_service=media_service
     ).schedule_post(post_id)

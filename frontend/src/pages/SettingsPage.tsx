@@ -67,11 +67,11 @@ export function SettingsPage() {
   return (
     <div className="page-stack">
       <section className="section-panel section-panel--intro">
-        <span className="eyebrow">Read-only configuration</span>
+        <span className="eyebrow">Backend-controlled configuration</span>
         <h2>Settings / Connection</h2>
         <p>
-          Credentials remain backend-only. The connection test asks the backend
-          to read only the configured Page name and ID from Meta.
+          Credentials remain backend-only. The connection test remains read-only;
+          real scheduling is controlled separately by both backend safety switches.
         </p>
       </section>
 
@@ -127,14 +127,29 @@ export function SettingsPage() {
           />
         ) : null}
         <ConfigurationRow
-          label="Graph API version"
-          value={activeResult?.api_version ?? status?.graph_api_version ?? "Unknown"}
-          detail="Explicitly versioned read-only Graph API request"
+          label="pages_manage_posts"
+          value="Expected"
+          detail="Meta enforces this permission on a real write; the browser does not inspect the token"
         />
         <ConfigurationRow
-          label="Publishing"
-          value={status?.publishing_enabled ? "Enabled" : "Disabled / Dry Run"}
-          detail="Phase 4 does not contain a Facebook write implementation"
+          label="Graph API version"
+          value={activeResult?.api_version ?? status?.graph_api_version ?? "Unknown"}
+          detail="Explicitly versioned Page identity and scheduled-photo requests"
+        />
+        <ConfigurationRow
+          label="Publish mode"
+          value={status?.publish_mode?.replaceAll("_", " ") ?? "Unknown"}
+          detail="Selected by backend configuration, never by the browser"
+        />
+        <ConfigurationRow
+          label="Automation"
+          value={status?.automation_enabled ? "Enabled" : "Disabled"}
+          detail="The independent external-write safety switch"
+        />
+        <ConfigurationRow
+          label="Real scheduling enabled"
+          value={status?.publishing_enabled ? "Yes" : "No"}
+          detail="Yes only when automation and Facebook scheduling mode are both enabled"
         />
         <ConfigurationRow
           label="Application timezone"

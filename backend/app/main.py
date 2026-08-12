@@ -1,4 +1,4 @@
-"""FastAPI application entry point for hosted post and dry-run workflows."""
+"""FastAPI entry point for hosted dry-run and guarded Facebook scheduling."""
 
 import logging
 from collections.abc import AsyncIterator
@@ -49,7 +49,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 
 app = FastAPI(
     title=settings.application_name,
-    version="0.5.0",
+    version="0.6.0",
     lifespan=lifespan,
 )
 

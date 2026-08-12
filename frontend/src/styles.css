@@ -866,6 +866,10 @@ h3 {
   line-height: 1.5;
 }
 
+.safety-copy--enabled {
+  color: var(--success);
+}
+
 .schedule-fields {
   display: grid;
   grid-template-columns: 1fr 1fr;

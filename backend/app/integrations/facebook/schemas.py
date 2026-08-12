@@ -26,6 +26,17 @@ class FacebookPageIdentity(BaseModel):
     name: str
 
 
+class FacebookScheduledPhoto(BaseModel):
+    """Identifiers returned by Meta after accepting a scheduled Page photo."""
+
+    id: str
+    post_id: str | None = None
+
+    @property
+    def object_id(self) -> str:
+        return self.post_id or self.id
+
+
 class FacebookConnectionStatus(BaseModel):
     connected: bool
     status: FacebookConnectionState

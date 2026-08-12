@@ -7,8 +7,9 @@
 - Phase 2: complete
 - Phase 3: complete
 - Hosted Migration + Deployment: complete; Supabase, Render, Cloudflare, and single-operator authentication are live
-- Phase 4: implemented; hosted valid-credential verification awaits manual Meta Page token setup
-- Phase 5 and later: not started
+- Phase 4: complete; hosted Page identity verified for The Test Lab
+- Phase 5: implemented; guarded scheduled-photo code, tests, and hosted dry-run deployment complete after deployment verification
+- Phase 6 and later: not started
 
 ## Principle
 
@@ -181,6 +182,13 @@ Requirements:
 - transition to `scheduled` only after a successful Meta response
 - transition to `failed` on a confirmed failure
 - do not blindly retry ambiguous writes
+
+Implementation notes:
+
+- Graph API v26.0 endpoint: `POST /{page-id}/photos`
+- multipart fields: `source`, `caption`, `published=false`, `scheduled_publish_time`, `unpublished_content_type=SCHEDULED`
+- current Meta scheduling window: at least 10 minutes and no more than 30 days, with a small local minimum-boundary buffer
+- ambiguous transport or unusable success responses persist `FACEBOOK_OUTCOME_UNKNOWN`, retain `external_request_made=true`, and block resubmission
 
 Real scheduling must be blocked unless:
 

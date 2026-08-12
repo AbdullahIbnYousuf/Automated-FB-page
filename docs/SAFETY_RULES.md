@@ -114,6 +114,7 @@ For V1:
 - real write retries should be conservative
 - ambiguous write failures should be surfaced for operator review
 - persist attempt metadata before manual retry
+- records with `FACEBOOK_OUTCOME_UNKNOWN` must not be edited or resubmitted by the current V1 workflow
 
 ## 8. Time Safety
 

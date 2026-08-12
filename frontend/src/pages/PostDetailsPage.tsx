@@ -2,11 +2,11 @@ import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { ApiError } from "../api/client";
-import { getPost, runDryRunSchedule, updatePost } from "../api/posts";
+import { getPost, schedulePost, updatePost } from "../api/posts";
 import { AuthenticatedImage } from "../components/AuthenticatedImage";
 import { AttemptStatusBadge, PostStatusBadge } from "../components/PostStatusBadge";
 import { useSystemStatus } from "../state/SystemStatusContext";
-import type { DryRunScheduleResult, PostRecord } from "../types/post";
+import type { PostRecord, ScheduleResult } from "../types/post";
 import {
   formPartsFromLocalIso,
   formatUtcDateTime,
@@ -26,7 +26,8 @@ export function PostDetailsPage() {
   const [scheduling, setScheduling] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [dryRunResult, setDryRunResult] = useState<DryRunScheduleResult | null>(null);
+  const [scheduleResult, setScheduleResult] = useState<ScheduleResult | null>(null);
+  const realSchedulingEnabled = systemStatus?.publishing_enabled === true;
 
   const applyPost = useCallback((record: PostRecord) => {
     const parts = formPartsFromLocalIso(record.scheduled_for_local);
@@ -65,8 +66,8 @@ export function PostDetailsPage() {
         timezone: post.display_timezone,
       });
       applyPost(updated);
-      setNotice("Changes saved. The post is a draft until dry-run validation runs again.");
-      setDryRunResult(null);
+      setNotice("Changes saved. The post is a draft until scheduling validation runs again.");
+      setScheduleResult(null);
     } catch (caught) {
       setError(caught instanceof ApiError ? caught.message : "Changes could not be saved.");
     } finally {
@@ -74,17 +75,17 @@ export function PostDetailsPage() {
     }
   }
 
-  async function scheduleDryRun() {
+  async function runSchedule() {
     if (!post) return;
     setScheduling(true);
     setError(null);
     setNotice(null);
     try {
-      const result = await runDryRunSchedule(post.id);
-      setDryRunResult(result);
+      const result = await schedulePost(post.id);
+      setScheduleResult(result);
       applyPost(await getPost(post.id));
     } catch (caught) {
-      setError(caught instanceof ApiError ? caught.message : "Dry-run scheduling failed.");
+      setError(caught instanceof ApiError ? caught.message : "Scheduling failed safely.");
       await load();
     } finally {
       setScheduling(false);
@@ -116,7 +117,11 @@ export function PostDetailsPage() {
     );
   }
 
-  const editBlocked = ["scheduling", "scheduled", "cancelled"].includes(post.status);
+  const unknownOutcome = post.last_error_code === "FACEBOOK_OUTCOME_UNKNOWN";
+  const editBlocked =
+    ["scheduling", "scheduled", "cancelled"].includes(post.status) || unknownOutcome;
+  const realModeBlocked =
+    systemStatus?.publish_mode === "facebook_schedule" && !realSchedulingEnabled;
 
   return (
     <div className="page-stack">
@@ -131,10 +136,20 @@ export function PostDetailsPage() {
 
       {error ? <section className="notice notice--error" role="alert"><div className="notice__icon">!</div><div><h3>Action failed</h3><p>{error}</p></div></section> : null}
       {notice ? <section className="notice"><div className="notice__icon">✓</div><div><h3>Saved</h3><p>{notice}</p></div></section> : null}
-      {dryRunResult ? (
+      {scheduleResult ? (
         <section className="simulation-result" aria-live="polite">
-          <span className="simulation-result__flag">Simulated success</span>
-          <div><h3>Dry run completed</h3><p>{dryRunResult.message}</p><small>External request made: No · Facebook ID created: No</small></div>
+          <span className="simulation-result__flag">
+            {scheduleResult.simulated ? "Simulated success" : "Facebook scheduled"}
+          </span>
+          <div>
+            <h3>{scheduleResult.simulated ? "Dry run completed" : "Scheduled on Facebook"}</h3>
+            <p>{scheduleResult.message}</p>
+            <small>
+              {scheduleResult.simulated
+                ? "External request made: No · Facebook ID created: No"
+                : `Facebook reference: ${scheduleResult.facebook_object_id ?? "Unavailable"}`}
+            </small>
+          </div>
         </section>
       ) : null}
 
@@ -156,9 +171,23 @@ export function PostDetailsPage() {
           <div className="timezone-callout"><span>Configured timezone</span><strong>{post.display_timezone}</strong><small>Browser timezone is not used for interpretation.</small></div>
           <div className="composer-actions">
             <button className="secondary-button" type="button" disabled={editBlocked || saving || scheduling} onClick={() => void saveEdits()}>{saving ? "Saving…" : "Save Changes"}</button>
-            <button className="primary-button" type="button" disabled={editBlocked || saving || scheduling || systemStatus?.publish_mode !== "dry_run"} onClick={() => void scheduleDryRun()}>{scheduling ? "Running simulation…" : "Run Dry-Run Schedule"}</button>
+            <button className="primary-button" type="button" disabled={editBlocked || saving || scheduling || !systemStatus || realModeBlocked} onClick={() => void runSchedule()}>
+              {scheduling
+                ? realSchedulingEnabled
+                  ? "Scheduling on Facebook…"
+                  : "Running simulation…"
+                : realSchedulingEnabled
+                  ? "Schedule on Facebook"
+                  : "Run Dry-Run Schedule"}
+            </button>
           </div>
-          <p className="safety-copy">No Facebook request will be sent.</p>
+          <p className={`safety-copy${realSchedulingEnabled ? " safety-copy--enabled" : ""}`}>
+            {unknownOutcome
+              ? "Outcome unknown: check Meta before any further action."
+              : realSchedulingEnabled
+                ? "Facebook publishing enabled. This action creates one scheduled Page photo."
+                : "Dry run: no Facebook request will be sent."}
+          </p>
         </section>
       </div>
 
@@ -167,6 +196,8 @@ export function PostDetailsPage() {
         <div><span>UTC schedule</span><strong>{formatUtcDateTime(post.scheduled_for_utc)}</strong><small>Stored in PostgreSQL as aware UTC</small></div>
         <div><span>Created</span><strong>{formatZonedDateTime(post.created_at, post.display_timezone)}</strong></div>
         <div><span>Updated</span><strong>{formatZonedDateTime(post.updated_at, post.display_timezone)}</strong></div>
+        <div><span>Scheduling mode</span><strong>{post.attempts[0]?.mode === "facebook_schedule" ? "Facebook" : post.attempts[0] ? "Dry run" : "Not attempted"}</strong></div>
+        <div><span>Facebook reference</span><strong>{post.facebook_object_id ?? "Not available"}</strong><small>Set only after confirmed Meta acceptance</small></div>
       </section>
 
       {post.last_error_message ? (
@@ -176,12 +207,12 @@ export function PostDetailsPage() {
       <section className="section-panel">
         <div className="section-heading"><div><span className="eyebrow">Immutable attempt history</span><h2>Scheduling attempts</h2></div><span className="phase-badge">{post.attempts.length} total</span></div>
         {post.attempts.length === 0 ? (
-          <p className="muted-copy">No dry-run attempts have been recorded.</p>
+          <p className="muted-copy">No scheduling attempts have been recorded.</p>
         ) : (
           <div className="attempt-list">
             {post.attempts.map((attempt) => (
               <article className="attempt-row" key={attempt.id}>
-                <div><AttemptStatusBadge result={attempt.result} /><strong>Dry run · simulated</strong><p>{attempt.safe_message}</p></div>
+                <div><AttemptStatusBadge result={attempt.result} /><strong>{attempt.mode === "facebook_schedule" ? "Facebook scheduling" : "Dry run · simulated"}</strong><p>{attempt.safe_message}</p></div>
                 <div className="attempt-row__meta"><span>{formatZonedDateTime(attempt.created_at, post.display_timezone)}</span><small>External request: {attempt.external_request_made ? "Yes" : "No"}</small></div>
               </article>
             ))}

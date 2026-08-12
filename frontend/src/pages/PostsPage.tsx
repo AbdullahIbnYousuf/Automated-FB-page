@@ -75,9 +75,11 @@ export function PostsPage() {
                     {formatZonedDateTime(post.scheduled_for_utc, post.display_timezone)} · {post.display_timezone}
                   </p>
                   {latestAttempt ? (
-                    <small>Latest dry run: {latestAttempt.safe_message}</small>
+                    <small>
+                      Latest {latestAttempt.mode === "facebook_schedule" ? "Facebook attempt" : "dry run"}: {latestAttempt.safe_message}
+                    </small>
                   ) : (
-                    <small>No dry-run attempt yet</small>
+                    <small>No scheduling attempt yet</small>
                   )}
                 </div>
                 <span className="post-row__arrow">→</span>

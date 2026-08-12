@@ -275,7 +275,7 @@ V1 is complete when all of the following are true:
 
 ## 15. Hosted single-operator boundary
 
-The current operational deployment adds infrastructure without expanding the Facebook feature scope:
+The current operational deployment provides the V1 Facebook feature scope:
 
 - React/Vite on Cloudflare Pages
 - FastAPI on one Render Free web service
@@ -284,4 +284,4 @@ The current operational deployment adds infrastructure without expanding the Fac
 - no public signup UI, profiles, roles, teams, or SaaS behavior
 - public health only; all dashboard data and images require authentication
 
-This hosted migration does not implement Phase 4 connection testing or Phase 5 Facebook scheduling. Dry-run semantics and the two-switch future publishing guard remain unchanged.
+Phase 4 connection testing and Phase 5 scheduled-photo code use this same hosted boundary. Dry-run remains the default, and real scheduling is available only when both backend switches are intentionally enabled.

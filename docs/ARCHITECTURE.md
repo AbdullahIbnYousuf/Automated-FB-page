@@ -23,10 +23,10 @@ Keep the scheduling core small, explicit, testable, and safe while making the cu
 │ posts + attempts    │  │ private post-images  │
 └─────────────────────┘  └──────────────────────┘
                │
-               ▼ Phase 4 read-only
+               ▼ Phase 4 read / Phase 5 guarded write
 ┌───────────────────────────────────────┐
 │ Facebook integration service         │
-│ GET Page id/name; official API only  │
+│ GET Page id/name; POST scheduled photo│
 └───────────────────────────────────────┘
 ```
 
@@ -105,7 +105,7 @@ updated_at               timestamptz
 ```text
 id
 post_id                  foreign key; cascade on post deletion
-mode                     dry_run
+  mode                     dry_run|facebook_schedule
 result                   in_progress|success|failed
 safe_message
 error_code               nullable
@@ -155,7 +155,7 @@ schedule_post(post_id) -> ScheduleResult
 
 The service claims an eligible post atomically, writes an in-progress attempt, validates caption/time/image availability, invokes the dry-run adapter, then commits the outcome. Duplicate in-progress attempts are rejected.
 
-Current dry-run invariants:
+Dry-run invariants:
 
 ```text
 post.status = ready
@@ -164,6 +164,8 @@ post.facebook_object_id = null
 ```
 
 The dry-run scheduler has no dependency on the Facebook client and makes no external request.
+
+Real mode uses the same atomic post claim and attempt history. It validates the Page configuration, 10-minute-to-30-day Meta window, caption, and original private image bytes before marking the attempt as externally initiated. It then performs one request with no automatic retry. Confirmed Meta success sets `scheduled` and stores the returned post/photo identifier. A transport or unusable-success-response ambiguity sets `FACEBOOK_OUTCOME_UNKNOWN`, preserves `external_request_made=true`, and blocks edit/resubmission of that record.
 
 ## 9. Facebook boundary
 
@@ -176,9 +178,19 @@ Authorization: Bearer <Page access token>
 
 The token and Page ID come from Render/backend environment configuration. The token never appears in a URL, frontend build, API response, database row, or normal log. `GET /api/facebook/status` reads only safe local state. `POST /api/facebook/test-connection` performs the Meta request and retains the last sanitized result only for the backend process lifetime.
 
-Phase 5 may add one real scheduled image post only after current official Meta documentation is re-verified.
+Phase 5 adds exactly one scheduled Page photo request:
 
-Any future write remains backend-only and requires both:
+```text
+POST https://graph.facebook.com/v26.0/{page-id}/photos
+Authorization: Bearer <Page access token>
+multipart: source, caption, published=false,
+           scheduled_publish_time=<Unix seconds>,
+           unpublished_content_type=SCHEDULED
+```
+
+The private image bytes are read and revalidated by FastAPI, then uploaded directly to Meta. No Supabase URL or privileged Storage credential is exposed. Meta currently documents a scheduling window from 10 minutes through 30 days after the request; the application uses a small minimum-boundary buffer.
+
+The write remains backend-only and requires both:
 
 ```env
 AUTOMATION_ENABLED=true

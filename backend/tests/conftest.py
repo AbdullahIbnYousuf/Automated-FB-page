@@ -77,6 +77,21 @@ class InMemoryMediaService:
     async def object_exists(self, object_path: str) -> bool:
         return object_path in self.objects
 
+    async def get_validated_object(
+        self,
+        object_path: str,
+        *,
+        expected_mime_type: str,
+    ) -> StoredObject:
+        stored = await self.get_object(object_path)
+        if stored.mime_type != expected_mime_type:
+            raise AppError(
+                code="INVALID_STORED_IMAGE",
+                message="The stored image type no longer matches the validated post.",
+                status_code=422,
+            )
+        return stored
+
     async def delete_object(self, object_path: str) -> None:
         self.objects.pop(object_path, None)
 

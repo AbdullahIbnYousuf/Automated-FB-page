@@ -10,7 +10,7 @@ export type AttemptResult = "in_progress" | "success" | "failed";
 
 export interface SchedulingAttempt {
   id: string;
-  mode: "dry_run";
+  mode: "dry_run" | "facebook_schedule";
   result: AttemptResult;
   safe_message: string;
   error_code: string | null;
@@ -49,13 +49,14 @@ export interface PostUpdateInput {
   timezone?: string;
 }
 
-export interface DryRunScheduleResult {
-  mode: "dry_run";
-  simulated: true;
+export interface ScheduleResult {
+  mode: "dry_run" | "facebook_schedule";
+  simulated: boolean;
   success: boolean;
   post_id: string;
   attempt_id: string;
   post_status: PostStatus;
-  external_request_made: false;
+  external_request_made: boolean;
+  facebook_object_id: string | null;
   message: string;
 }

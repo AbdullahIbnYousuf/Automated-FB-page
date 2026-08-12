@@ -7,8 +7,13 @@ import pytest
 
 from app.config import Settings
 from app.integrations.facebook.client import FacebookClient
-from app.integrations.facebook.errors import FacebookClientError
+from app.integrations.facebook.errors import (
+    FacebookClientError,
+    FacebookWriteError,
+    FacebookWriteErrorCode,
+)
 from app.integrations.facebook.schemas import FacebookConnectionState
+from tests.helpers import image_bytes
 
 
 PAGE_ID = "123456789012345"
@@ -188,3 +193,113 @@ def test_invalid_page_configuration_makes_no_request() -> None:
 
     assert caught.value.state is FacebookConnectionState.INVALID_CONFIGURATION
     assert called is False
+
+
+def test_scheduled_photo_uses_secure_v26_multipart_request() -> None:
+    observed: list[httpx.Request] = []
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        observed.append(request)
+        return httpx.Response(
+            200,
+            json={"id": "photo-123", "post_id": "page-123_post-456"},
+            request=request,
+        )
+
+    image = image_bytes("PNG")
+    result = asyncio.run(
+        FacebookClient(
+            facebook_settings(), transport=httpx.MockTransport(handler)
+        ).schedule_page_photo(
+            caption="Scheduled caption",
+            image_content=image,
+            image_mime_type="image/png",
+            scheduled_publish_time=1_800_000_000,
+        )
+    )
+
+    assert result.object_id == "page-123_post-456"
+    assert len(observed) == 1
+    request = observed[0]
+    assert request.method == "POST"
+    assert request.url.path == f"/v26.0/{PAGE_ID}/photos"
+    assert dict(request.url.params) == {}
+    assert request.headers["Authorization"] == f"Bearer {PAGE_TOKEN}"
+    assert request.headers["Content-Type"].startswith("multipart/form-data; boundary=")
+    assert PAGE_TOKEN not in str(request.url)
+    assert PAGE_TOKEN.encode() not in request.content
+    for expected in (
+        b'name="source"',
+        b'filename="scheduled-photo.png"',
+        b'name="caption"',
+        b"Scheduled caption",
+        b'name="published"',
+        b"false",
+        b'name="scheduled_publish_time"',
+        b"1800000000",
+        b'name="unpublished_content_type"',
+        b"SCHEDULED",
+        image,
+    ):
+        assert expected in request.content
+
+
+def test_scheduled_photo_transport_failure_is_ambiguous_and_not_retried() -> None:
+    calls = 0
+
+    async def timeout(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        raise httpx.ReadTimeout("raw transport detail", request=request)
+
+    with pytest.raises(FacebookWriteError) as caught:
+        asyncio.run(
+            FacebookClient(
+                facebook_settings(), transport=httpx.MockTransport(timeout)
+            ).schedule_page_photo(
+                caption="Caption",
+                image_content=image_bytes("PNG"),
+                image_mime_type="image/png",
+                scheduled_publish_time=1_800_000_000,
+            )
+        )
+
+    assert calls == 1
+    assert caught.value.code is FacebookWriteErrorCode.OUTCOME_UNKNOWN
+    assert caught.value.outcome_unknown is True
+    assert "raw transport" not in caught.value.safe_message
+    assert PAGE_TOKEN not in caught.value.safe_message
+
+
+@pytest.mark.parametrize(
+    ("payload", "expected_code"),
+    [
+        ({"error": {"code": 190}}, FacebookWriteErrorCode.INVALID_CREDENTIALS),
+        ({"error": {"code": 200}}, FacebookWriteErrorCode.PERMISSION_DENIED),
+        ({"error": {"code": 324}}, FacebookWriteErrorCode.INVALID_IMAGE),
+        ({"error": {"code": 100}}, FacebookWriteErrorCode.INVALID_SCHEDULE),
+        ({"error": {"code": 368}}, FacebookWriteErrorCode.UNSUPPORTED_REQUEST),
+        ({"error": {"code": 4}}, FacebookWriteErrorCode.RATE_LIMITED),
+    ],
+)
+def test_scheduled_photo_meta_errors_are_sanitized(
+    payload: dict[str, object],
+    expected_code: FacebookWriteErrorCode,
+) -> None:
+    transport = httpx.MockTransport(
+        lambda request: httpx.Response(400, json=payload, request=request)
+    )
+    with pytest.raises(FacebookWriteError) as caught:
+        asyncio.run(
+            FacebookClient(
+                facebook_settings(), transport=transport
+            ).schedule_page_photo(
+                caption="Caption",
+                image_content=image_bytes("PNG"),
+                image_mime_type="image/png",
+                scheduled_publish_time=1_800_000_000,
+            )
+        )
+
+    assert caught.value.code is expected_code
+    assert PAGE_TOKEN not in caught.value.safe_message

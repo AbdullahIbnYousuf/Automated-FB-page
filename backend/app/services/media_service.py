@@ -104,6 +104,57 @@ class MediaService:
             raise
         return True
 
+    async def get_validated_object(
+        self,
+        object_path: str,
+        *,
+        expected_mime_type: str,
+    ) -> StoredObject:
+        """Revalidate private bytes before they cross the Meta write boundary."""
+
+        stored = await self.get_object(object_path)
+        expected_format = {
+            "image/jpeg": "JPEG",
+            "image/png": "PNG",
+        }.get(expected_mime_type)
+        if expected_format is None or stored.mime_type != expected_mime_type:
+            raise AppError(
+                code="INVALID_STORED_IMAGE",
+                message="The stored image type no longer matches the validated post.",
+                status_code=422,
+            )
+        if not stored.content or len(stored.content) > self.settings.max_upload_bytes:
+            raise AppError(
+                code="INVALID_STORED_IMAGE",
+                message="The stored image is empty or exceeds the configured size limit.",
+                status_code=422,
+            )
+        try:
+            with Image.open(BytesIO(stored.content)) as image:
+                if image.format != expected_format:
+                    raise AppError(
+                        code="INVALID_STORED_IMAGE",
+                        message="The stored image content no longer matches its type.",
+                        status_code=422,
+                    )
+                width, height = image.size
+                if width <= 0 or height <= 0 or width * height > self.settings.max_image_pixels:
+                    raise AppError(
+                        code="INVALID_STORED_IMAGE",
+                        message="The stored image dimensions are invalid or too large.",
+                        status_code=422,
+                    )
+                image.verify()
+        except AppError:
+            raise
+        except (Image.DecompressionBombError, UnidentifiedImageError, OSError) as exc:
+            raise AppError(
+                code="INVALID_STORED_IMAGE",
+                message="The stored image is not a valid JPEG or PNG image.",
+                status_code=422,
+            ) from exc
+        return stored
+
     async def delete_object(self, object_path: str) -> None:
         """Best-effort rollback for an upload whose database insert failed."""
 

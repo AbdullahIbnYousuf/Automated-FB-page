@@ -2,13 +2,13 @@ import { useEffect, useState, type ChangeEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import { ApiError } from "../api/client";
-import { createPost, runDryRunSchedule } from "../api/posts";
+import { createPost, schedulePost } from "../api/posts";
 import { PostPreview } from "../components/PostPreview";
 import { useSystemStatus } from "../state/SystemStatusContext";
-import type { DryRunScheduleResult, PostRecord } from "../types/post";
+import type { PostRecord, ScheduleResult } from "../types/post";
 import { joinLocalDateTime } from "../utils/datetime";
 
-type SubmissionAction = "save" | "dry-run";
+type SubmissionAction = "save" | "schedule";
 
 export function NewPostPage() {
   const navigate = useNavigate();
@@ -22,8 +22,8 @@ export function NewPostPage() {
   const [submitting, setSubmitting] = useState<SubmissionAction | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [createdPost, setCreatedPost] = useState<PostRecord | null>(null);
-  const [dryRunResult, setDryRunResult] =
-    useState<DryRunScheduleResult | null>(null);
+  const [scheduleResult, setScheduleResult] = useState<ScheduleResult | null>(null);
+  const realSchedulingEnabled = status?.publishing_enabled === true;
 
   useEffect(() => {
     if (!image) {
@@ -38,18 +38,22 @@ export function NewPostPage() {
   function handleImageChange(event: ChangeEvent<HTMLInputElement>) {
     setImage(event.target.files?.[0] ?? null);
     setCreatedPost(null);
-    setDryRunResult(null);
+    setScheduleResult(null);
   }
 
   async function submit(action: SubmissionAction) {
     setError(null);
-    setDryRunResult(null);
+    setScheduleResult(null);
     if (!caption.trim() || !image || !date || !time || !timezone) {
       setError("Caption, one image, future date, time, and backend timezone are required.");
       return;
     }
-    if (action === "dry-run" && status?.publish_mode !== "dry_run") {
-      setError("The backend is not currently in dry-run mode.");
+    if (
+      action === "schedule" &&
+      status?.publish_mode === "facebook_schedule" &&
+      !status.publishing_enabled
+    ) {
+      setError("Facebook scheduling is disabled by the backend safety gate.");
       return;
     }
 
@@ -66,8 +70,8 @@ export function NewPostPage() {
         navigate(`/posts/${post.id}`);
         return;
       }
-      const result = await runDryRunSchedule(post.id);
-      setDryRunResult(result);
+      const result = await schedulePost(post.id);
+      setScheduleResult(result);
     } catch (caught) {
       setError(
         caught instanceof ApiError
@@ -85,8 +89,8 @@ export function NewPostPage() {
         <span className="eyebrow">Local post workspace</span>
         <h2>Prepare one image post</h2>
         <p>
-          Save a durable hosted draft or run the complete scheduling validation as
-          an explicit simulation. No Facebook request is available in this phase.
+          Save a durable hosted draft, run a safe simulation, or schedule the
+          validated image on Facebook when both backend publishing switches are enabled.
         </p>
       </section>
 
@@ -103,15 +107,25 @@ export function NewPostPage() {
         </section>
       ) : null}
 
-      {dryRunResult ? (
+      {scheduleResult ? (
         <section className="simulation-result" aria-live="polite">
-          <span className="simulation-result__flag">Simulated success</span>
+          <span className="simulation-result__flag">
+            {scheduleResult.simulated ? "Simulated success" : "Facebook scheduled"}
+          </span>
           <div>
-            <h3>Dry-run scheduling completed</h3>
-            <p>{dryRunResult.message}</p>
-            <small>External request made: No · Post remains ready</small>
+            <h3>
+              {scheduleResult.simulated
+                ? "Dry-run scheduling completed"
+                : "Scheduled on Facebook"}
+            </h3>
+            <p>{scheduleResult.message}</p>
+            <small>
+              {scheduleResult.simulated
+                ? "External request made: No · Post remains ready"
+                : `Facebook reference: ${scheduleResult.facebook_object_id ?? "Unavailable"}`}
+            </small>
           </div>
-          <Link className="secondary-button secondary-button--link" to={`/posts/${dryRunResult.post_id}`}>
+          <Link className="secondary-button secondary-button--link" to={`/posts/${scheduleResult.post_id}`}>
             View post details
           </Link>
         </section>
@@ -193,13 +207,27 @@ export function NewPostPage() {
             <button
               className="primary-button"
               type="button"
-              disabled={submitting !== null || status?.publish_mode !== "dry_run"}
-              onClick={() => void submit("dry-run")}
+              disabled={
+                submitting !== null ||
+                !status ||
+                (status.publish_mode === "facebook_schedule" && !realSchedulingEnabled)
+              }
+              onClick={() => void submit("schedule")}
             >
-              {submitting === "dry-run" ? "Running simulation…" : "Run Dry-Run Schedule"}
+              {submitting === "schedule"
+                ? realSchedulingEnabled
+                  ? "Scheduling on Facebook…"
+                  : "Running simulation…"
+                : realSchedulingEnabled
+                  ? "Schedule on Facebook"
+                  : "Run Dry-Run Schedule"}
             </button>
           </div>
-          <p className="safety-copy">No Facebook request will be sent.</p>
+          <p className={`safety-copy${realSchedulingEnabled ? " safety-copy--enabled" : ""}`}>
+            {realSchedulingEnabled
+              ? "Facebook publishing enabled. This action creates one scheduled Page photo."
+              : "Dry run: no Facebook request will be sent."}
+          </p>
         </section>
 
         <PostPreview

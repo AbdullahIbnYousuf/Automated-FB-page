@@ -29,6 +29,7 @@ class PostStatus(StrEnum):
 
 class SchedulingMode(StrEnum):
     DRY_RUN = "dry_run"
+    FACEBOOK_SCHEDULE = "facebook_schedule"
 
 
 class AttemptResult(StrEnum):
