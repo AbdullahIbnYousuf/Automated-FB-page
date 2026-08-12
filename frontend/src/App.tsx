@@ -3,7 +3,9 @@ import { Route, Routes } from "react-router-dom";
 import { AuthProvider, useAuth } from "./auth/AuthContext";
 import { AppShell } from "./components/AppShell";
 import { LoginPage } from "./pages/LoginPage";
+import { DataDeletionPage } from "./pages/DataDeletionPage";
 import { PasswordSetupPage } from "./pages/PasswordSetupPage";
+import { PrivacyPage } from "./pages/PrivacyPage";
 import { NewPostPage } from "./pages/NewPostPage";
 import { NotFoundPage } from "./pages/NotFoundPage";
 import { OverviewPage } from "./pages/OverviewPage";
@@ -40,8 +42,17 @@ function AuthenticatedApplication() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <AuthenticatedApplication />
-    </AuthProvider>
+    <Routes>
+      <Route path="/privacy" element={<PrivacyPage />} />
+      <Route path="/data-deletion" element={<DataDeletionPage />} />
+      <Route
+        path="*"
+        element={
+          <AuthProvider>
+            <AuthenticatedApplication />
+          </AuthProvider>
+        }
+      />
+    </Routes>
   );
 }

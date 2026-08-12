@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from "react";
+import { Link } from "react-router-dom";
 
 import { useAuth } from "../auth/AuthContext";
 
@@ -73,6 +74,10 @@ export function LoginPage() {
           </button>
         </form>
         <small>Public registration is not available.</small>
+        <nav className="public-links" aria-label="Legal and support">
+          <Link to="/privacy">Privacy</Link>
+          <Link to="/data-deletion">Data deletion</Link>
+        </nav>
       </section>
     </main>
   );
