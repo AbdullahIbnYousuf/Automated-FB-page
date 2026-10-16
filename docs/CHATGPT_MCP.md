@@ -119,6 +119,34 @@ All results identify simulation, external request, attempt and Meta reference.
 
 ## Tests and acceptance
 
+### Rollout evidence — 16 October 2026
+
+- Implementation commit: `1d9578d` (pushed to `main`). Backend tests: 109 passed;
+  frontend consent tests: 8 passed. Python compilation, dependency checks and
+  the frontend production build/type check passed.
+- The existing Render service deployed through its GitHub integration. Public
+  MCP resource metadata returned HTTP 200; an unauthenticated MCP initialize
+  request returned HTTP 401 with the canonical resource-metadata challenge.
+  Authenticated live tool discovery remains unverified.
+- The local production preview showed the signed-out consent login while
+  retaining `authorization_id`. Public legal pages loaded without login;
+  the data-deletion page survived refresh. A 375-pixel viewport showed no
+  horizontal overflow, and the checked routes had no console errors.
+- The private plugin package was saved once:
+  [The Test Lab Operations](https://chatgpt.com/plugins/plugins_6ad1a1de4a448191873aba41eb265f96)
+  (`plugins_6ad1a1de4a448191873aba41eb265f96`, version `0.1.0`). Saving the
+  package is not installation, operator authorization or live tool verification.
+- Supabase authorization-server discovery still returned HTTP 404 with
+  `feature_disabled`. Supabase migrations/hook/OAuth configuration and the
+  Cloudflare consent-frontend rollout remain pending renewed provider access.
+  Render, Supabase and Cloudflare CLI credentials had expired; Render's
+  automatic deployment did not restore administrative CLI access.
+- Live OAuth login/denial/refresh, uploaded-image transfer, generated-image
+  transfer and authenticated dry-run scheduling have not been accepted yet.
+  No real Facebook scheduling request was made for this integration. Runtime
+  publishing settings must be inspected before the controlled acceptance test;
+  safe deployment defaults remain committed in configuration.
+
 Run backend tests with `cd backend && .venv/bin/python -m pytest` and compile with
 `.venv/bin/python -m compileall -q app tests`. Run frontend build/type checking
 with `cd frontend && npm run build`; run the consent-flow checks with `npm test`.
