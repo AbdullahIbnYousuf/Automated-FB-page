@@ -10,6 +10,7 @@ import {
 import type { Session } from "@supabase/supabase-js";
 
 import { authConfigurationError, supabase } from "./supabase";
+import { passwordSetupReturnUrl } from "./oauth-consent";
 
 interface AuthContextValue {
   session: Session | null;
@@ -75,7 +76,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { error } = await supabase.auth.updateUser({ password });
     if (error) throw new Error("The password could not be saved. Use at least 8 characters.");
     setPasswordSetupRequired(false);
-    window.history.replaceState({}, document.title, window.location.pathname);
+    window.history.replaceState({}, document.title, passwordSetupReturnUrl(window.location.pathname, window.location.search));
   }, []);
 
   const value = useMemo(

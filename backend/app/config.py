@@ -56,6 +56,14 @@ class Settings(BaseSettings):
     facebook_page_access_token: SecretStr | None = None
     facebook_request_timeout_seconds: float = 10.0
 
+    mcp_resource_url: str = "https://facebook-page-operations-api.onrender.com/mcp"
+    mcp_file_allowed_hosts: str = "files.oaiusercontent.com"
+    mcp_file_timeout_seconds: float = 20.0
+
+    @property
+    def mcp_issuer_url(self) -> str:
+        return f"{self.require_supabase_url()}/auth/v1"
+
     @property
     def publishing_enabled(self) -> bool:
         """Return true only when both required real-write switches are enabled."""

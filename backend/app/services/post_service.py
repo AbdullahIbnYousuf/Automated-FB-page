@@ -3,7 +3,7 @@
 from datetime import UTC, datetime
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.config import Settings
@@ -96,6 +96,7 @@ class PostService:
         image: StoredImage,
         scheduled_for_local: str,
         timezone: str,
+        commit: bool = True,
     ) -> PostResponse:
         cleaned_caption = validate_caption(caption)
         display_timezone = validate_requested_timezone(timezone, self.settings)
@@ -112,26 +113,42 @@ class PostService:
             display_timezone=display_timezone,
         )
         self.session.add(post)
-        self.session.commit()
+        self.session.flush()
+        if commit:
+            self.session.commit()
         return post_response(self.get_post_model(post.id))
 
-    def list_posts(self) -> PostListResponse:
+    def list_posts(
+        self, *, status: PostStatus | None = None,
+        limit: int | None = None, offset: int = 0,
+    ) -> PostListResponse:
+        query = select(Post)
+        count = select(func.count()).select_from(Post)
+        if status is not None:
+            query = query.where(Post.status == status)
+            count = count.where(Post.status == status)
+        query = query.offset(offset)
+        if limit is not None:
+            query = query.limit(limit)
         posts = self.session.scalars(
-            select(Post)
+            query
             .options(selectinload(Post.attempts))
-            .order_by(Post.created_at.desc())
+            .order_by(Post.created_at.desc(), Post.id)
         ).all()
         return PostListResponse(
             items=[post_response(post) for post in posts],
-            total=len(posts),
+            total=self.session.scalar(count) or 0,
         )
 
-    def get_post_model(self, post_id: str) -> Post:
-        post = self.session.scalar(
+    def get_post_model(self, post_id: str, *, for_update: bool = False) -> Post:
+        query = (
             select(Post)
             .where(Post.id == post_id)
             .options(selectinload(Post.attempts))
         )
+        if for_update:
+            query = query.with_for_update()
+        post = self.session.scalar(query)
         if post is None:
             raise AppError(
                 code="POST_NOT_FOUND",
@@ -148,7 +165,7 @@ class PostService:
         post_id: str,
         update: PostUpdateRequest,
     ) -> PostResponse:
-        post = self.get_post_model(post_id)
+        post = self.get_post_model(post_id, for_update=True)
         if post.status in {
             PostStatus.SCHEDULING,
             PostStatus.SCHEDULED,

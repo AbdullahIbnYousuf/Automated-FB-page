@@ -32,6 +32,12 @@ services:
         value: v26.0
       - key: FACEBOOK_REQUEST_TIMEOUT_SECONDS
         value: "10"
+      - key: MCP_RESOURCE_URL
+        value: https://facebook-page-operations-api.onrender.com/mcp
+      - key: MCP_FILE_ALLOWED_HOSTS
+        value: files.oaiusercontent.com
+      - key: MCP_FILE_TIMEOUT_SECONDS
+        value: "20"
       - key: DATABASE_URL
         sync: false
       - key: FRONTEND_ORIGINS

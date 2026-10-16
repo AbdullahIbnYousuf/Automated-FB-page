@@ -50,3 +50,8 @@ def configure_logging(level: str) -> None:
     root_logger.handlers.clear()
     root_logger.addHandler(handler)
     root_logger.setLevel(level.upper())
+    # HTTP libraries otherwise log temporary signed file URLs at INFO.
+    for name in ("httpx", "httpx2", "httpcore", "httpcore2"):
+        logging.getLogger(name).setLevel(logging.WARNING)
+    # Protocol DEBUG diagnostics can contain complete user-supplied tool frames.
+    logging.getLogger("mcp").setLevel(logging.INFO)

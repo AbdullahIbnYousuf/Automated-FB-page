@@ -5,6 +5,7 @@ export function PrivacyPage() {
     <PublicPageLayout
       eyebrow="Public information"
       title="Privacy policy"
+      updated="October 16, 2026"
       introduction="This policy describes how The Test Lab Operations handles information for its current single-operator Facebook Page scheduling workflow."
     >
       <section>
@@ -24,7 +25,7 @@ export function PrivacyPage() {
           <li>post captions and uploaded images;</li>
           <li>requested scheduling dates, times, and timezone;</li>
           <li>post status, scheduling-attempt metadata, safe error details, and returned Facebook identifiers when available; and</li>
-          <li>the authorized operator account information needed for authentication and related operational records.</li>
+          <li>the authorized operator account information needed for authentication, MCP request keys and payload fingerprints used to prevent duplicate operations, and related operational records.</li>
         </ul>
         <p>
           The application does not currently use Facebook analytics, messages,
@@ -51,6 +52,12 @@ export function PrivacyPage() {
           image Storage. Render hosts the FastAPI backend, and Cloudflare Pages hosts
           this frontend. Information is processed by these services as needed to
           operate the application.
+        </p>
+        <p>
+          When the operator connects the private ChatGPT plugin, selected captions,
+          images and tool results are also processed through ChatGPT. The backend
+          downloads the selected image from a temporary ChatGPT file link; it does
+          not intentionally store that temporary link.
         </p>
       </section>
 

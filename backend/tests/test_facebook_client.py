@@ -303,3 +303,14 @@ def test_scheduled_photo_meta_errors_are_sanitized(
 
     assert caught.value.code is expected_code
     assert PAGE_TOKEN not in caught.value.safe_message
+
+
+@pytest.mark.parametrize("payload", [{"id": None}, {"id": {}}, {"id": True}, {"id": ""}, {"id": "photo", "post_id": []}])
+def test_unusable_success_identifiers_are_ambiguous(payload) -> None:
+    transport = httpx.MockTransport(lambda request: httpx.Response(200, json=payload))
+    with pytest.raises(FacebookWriteError) as caught:
+        asyncio.run(FacebookClient(facebook_settings(), transport=transport).schedule_page_photo(
+            caption="Caption", image_content=image_bytes("PNG"),
+            image_mime_type="image/png", scheduled_publish_time=1_800_000_000,
+        ))
+    assert caught.value.code is FacebookWriteErrorCode.OUTCOME_UNKNOWN

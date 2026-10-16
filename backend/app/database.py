@@ -74,8 +74,10 @@ def initialize_database() -> None:
     database_url = settings.require_database_url()
     if database_url.startswith("sqlite"):
         from app.models import post as post_models
+        from app.models import mcp_operation as mcp_models
 
         del post_models
+        del mcp_models
         Base.metadata.create_all(bind=get_engine(database_url))
     with get_engine(database_url).connect() as connection:
         connection.execute(text("SELECT 1"))

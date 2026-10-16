@@ -7,6 +7,7 @@ interface PublicPageLayoutProps {
   eyebrow: string;
   title: string;
   introduction: string;
+  updated?: string;
   children: ReactNode;
 }
 
@@ -14,6 +15,7 @@ export function PublicPageLayout({
   eyebrow,
   title,
   introduction,
+  updated = "August 12, 2026",
   children,
 }: PublicPageLayoutProps) {
   useEffect(() => {
@@ -47,7 +49,7 @@ export function PublicPageLayout({
             <span className="eyebrow">{eyebrow}</span>
             <h1>{title}</h1>
             <p>{introduction}</p>
-            <small>Last updated August 12, 2026</small>
+            <small>Last updated {updated}</small>
           </div>
           <div className="legal-sections">{children}</div>
         </article>

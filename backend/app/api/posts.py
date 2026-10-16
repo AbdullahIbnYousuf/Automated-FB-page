@@ -15,6 +15,7 @@ from app.schemas.post import (
 )
 from app.services.media_service import MediaService
 from app.services.post_service import PostService
+from app.services.post_creation_service import create_post_from_upload
 from app.services.scheduling_service import SchedulingService
 
 
@@ -38,17 +39,10 @@ async def create_post(
     timezone: Annotated[str, Form()],
     image: Annotated[UploadFile, File()],
 ) -> PostResponse:
-    stored_image = await media_service.store_upload(image)
-    try:
-        return PostService(session, settings).create_post(
-            caption=caption,
-            image=stored_image,
-            scheduled_for_local=scheduled_for_local,
-            timezone=timezone,
-        )
-    except Exception:
-        await media_service.delete_object(stored_image.object_path)
-        raise
+    return await create_post_from_upload(
+        session, settings, media_service, caption=caption, image=image,
+        scheduled_for_local=scheduled_for_local, timezone=timezone,
+    )
 
 
 @router.get("", response_model=PostListResponse)

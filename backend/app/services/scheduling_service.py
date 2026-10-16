@@ -3,6 +3,8 @@
 import logging
 from datetime import UTC, datetime
 
+import anyio
+
 from sqlalchemy import or_, select, update
 from sqlalchemy.orm import Session, selectinload
 
@@ -47,8 +49,10 @@ class SchedulingService:
             FacebookClient(settings)
         )
 
-    async def schedule_post(self, post_id: str) -> ScheduleResponse:
-        mode = self._selected_mode()
+    async def schedule_post(
+        self, post_id: str, *, requested_mode: SchedulingMode | None = None,
+    ) -> ScheduleResponse:
+        mode = self._selected_mode(requested_mode)
         now = datetime.now(UTC)
         claimed_id = self.session.execute(
             update(Post)
@@ -123,18 +127,16 @@ class SchedulingService:
                     simulated=True,
                 )
 
-            command = self.facebook_scheduler.prepare(post, image)
-            attempt.external_request_made = True
-            attempt.safe_message = "Facebook scheduling request was initiated."
-            self.session.commit()
-            facebook = await self.facebook_scheduler.execute(command)
-            return self._record_success(
-                post,
-                attempt,
-                message=facebook.message,
-                facebook_object_id=facebook.facebook_object_id,
-                simulated=False,
-            )
+            with anyio.CancelScope(shield=True):
+                command = self.facebook_scheduler.prepare(post, image)
+                attempt.external_request_made = True
+                attempt.safe_message = "Facebook scheduling request was initiated."
+                self.session.commit()
+                facebook = await self.facebook_scheduler.execute(command)
+                return self._record_success(
+                    post, attempt, message=facebook.message,
+                    facebook_object_id=facebook.facebook_object_id, simulated=False,
+                )
         except FacebookWriteError as exc:
             error = AppError(
                 code=exc.code.value,
@@ -176,7 +178,16 @@ class SchedulingService:
             self._record_failure(post, attempt, internal_error)
             raise internal_error from exc
 
-    def _selected_mode(self) -> SchedulingMode:
+    def _selected_mode(self, requested_mode: SchedulingMode | None = None) -> SchedulingMode:
+        if requested_mode is SchedulingMode.DRY_RUN:
+            return SchedulingMode.DRY_RUN
+        if requested_mode is SchedulingMode.FACEBOOK_SCHEDULE:
+            if self.settings.publishing_enabled:
+                return SchedulingMode.FACEBOOK_SCHEDULE
+            raise AppError(
+                code="PUBLISHING_DISABLED", status_code=503,
+                message="Real scheduling requires both backend publishing switches.",
+            )
         if self.settings.publish_mode is PublishMode.DRY_RUN:
             return SchedulingMode.DRY_RUN
         if self.settings.publishing_enabled:

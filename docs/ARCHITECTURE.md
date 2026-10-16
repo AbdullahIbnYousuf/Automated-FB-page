@@ -215,3 +215,34 @@ The official Meta Graph API is the only permitted integration. Browser automatio
 - `render.yaml` declares exactly one free backend service and secret variable names with `sync: false`.
 - `frontend/public/_redirects` provides the Cloudflare Pages SPA fallback.
 - No large CI/CD system is required for this prototype.
+
+## 12. Private ChatGPT MCP client
+
+The same Render FastAPI app mounts the official Python MCP SDK at `/mcp` using
+stateless Streamable HTTP/JSON and a shared host lifespan. Tools reuse the domain
+services; they never duplicate Meta request logic. Public RFC 9728 resource
+metadata identifies the Supabase OAuth authorization server. All MCP requests,
+including discovery of tools, require a resource-bound OAuth access token.
+
+The backend verifies ES256/RS256 signatures using public JWKS, exact issuer and
+MCP audience, expiry, granted `email` scope, a nonempty OAuth `client_id`, and the
+operator email. Supabase performs DCR, PKCE, consent, token issuance and refresh.
+The `/oauth/consent` frontend route checks the backend operator allowlist before
+approval. Its authorization ID survives login/password setup. The SQL token
+hook binds this project's scheduler OAuth grants to the canonical `/mcp` audience
+on issuance and refresh; ordinary dashboard tokens are unchanged.
+
+ChatGPT file objects supply a temporary URL and file ID. An isolated downloader
+accepts verified HTTPS file hosts only, rejects private DNS answers, checks
+redirects, and bounds time/bytes. No application credentials accompany downloads.
+Validated bytes enter the existing private Storage workflow; signed URLs are
+neither logged nor persisted. Uploaded/generated image acceptance is tracked
+separately from mocked download tests.
+
+`mcp_operations` reserves operator + tool + request key before side effects,
+stores a payload fingerprint, atomically associates the created post, and records
+a safe response. Replays never reschedule. Pending keys after a crash stay blocked.
+There are no recovery workers or automatic external-write retries. A short
+cancellation shield permits normal disconnects to finish outcome persistence;
+process death can still require inspection. Both MCP and REST use the existing
+atomic post claim, and draft updates lock the row against concurrent scheduling.

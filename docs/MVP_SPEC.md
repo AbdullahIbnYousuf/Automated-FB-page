@@ -285,3 +285,19 @@ The current operational deployment provides the V1 Facebook feature scope:
 - public health only; all dashboard data and images require authentication
 
 Phase 4 connection testing and Phase 5 scheduled-photo code use this same hosted boundary. Dry-run remains the default, and real scheduling is available only when both backend switches are intentionally enabled.
+
+## 16. Private ChatGPT scheduling client
+
+The authorized operator may also manage the same prepared content through a
+private ChatGPT MCP plugin. Required tools are status, connection test, list/get
+posts, create/update drafts, schedule an existing post and create-and-schedule.
+ChatGPT image attachments must actually transfer into validated private Storage.
+Content generation remains outside this backend; additional Pages/platforms,
+PINs, analytics, recurring generation and SaaS behavior remain out of scope.
+
+OAuth reuses Supabase identity and explicit operator consent. MCP schedules
+default to simulation; explicit real requests require both server gates.
+Creation uses persistent request keys to prevent duplicate posts on replays.
+Full acceptance additionally requires a ChatGPT web connection, actual uploaded
+and generated image checks, Meta acceptance of one specifically approved post,
+status retrieval and human confirmation in Meta's scheduled-post interface.

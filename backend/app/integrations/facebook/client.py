@@ -148,8 +148,13 @@ class FacebookClient:
 
         try:
             payload = response.json()
-            photo_id = str(payload["id"]).strip()
+            raw_photo_id = payload["id"]
+            if not isinstance(raw_photo_id, (str, int)) or isinstance(raw_photo_id, bool):
+                raise ValueError("Invalid identifier type")
+            photo_id = str(raw_photo_id).strip()
             raw_post_id = payload.get("post_id")
+            if raw_post_id is not None and (not isinstance(raw_post_id, (str, int)) or isinstance(raw_post_id, bool)):
+                raise ValueError("Invalid identifier type")
             post_id = str(raw_post_id).strip() if raw_post_id is not None else None
         except (AttributeError, KeyError, TypeError, ValueError) as exc:
             raise FacebookWriteError(

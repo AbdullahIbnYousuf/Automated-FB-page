@@ -4,7 +4,7 @@
 
 This repository contains the first version of a larger Facebook Page operations and automation product.
 
-The current product is a **GUI-based Facebook Page Scheduler**. A user provides already-created content — a caption, one image, and a future date/time — and the application safely schedules that content to a Facebook Page through the official Meta Graph API.
+The current product is a **Facebook Page Scheduler with a web GUI and a private ChatGPT MCP plugin**. The authorized operator provides a caption, one image, and a future date/time through either client; both reuse the same backend scheduling services and official Meta Graph API. ChatGPT may prepare content outside this application; this backend does not generate content.
 
 This repository is **not** an AI content-generation project yet. Content creation will be added much later. The near-term roadmap is to automate the management of existing content first: scheduling, content management, analytics, scoring, dashboard workflows, and comments.
 
@@ -70,6 +70,9 @@ Keep dependencies minimal. Do not introduce Docker, Redis, Celery, Next.js, a co
 - External API calls must be mockable.
 - The application must have a dry-run implementation path.
 - All operational APIs and private media must require a verified Supabase operator token; health may remain public.
+- MCP uses Supabase OAuth, resource-bound JWT validation, and the same operator allowlist. Public OAuth discovery documents contain no operational data. The public privacy/deletion pages remain accessible without login.
+- ChatGPT file inputs must be downloaded with bounded, credential-free HTTPS requests to explicitly verified hosts, then validated and stored privately. Signed URLs must never be persisted or logged.
+- MCP creation requests require durable replay protection before side effects. An unfinished request or uncertain Facebook outcome must never be automatically retried.
 - Supabase/PostgreSQL/Render secrets must remain backend-only.
 - Store times internally in UTC; display and accept user times using the configured timezone, initially `Asia/Dhaka`.
 - Never rely on the browser's implicit timezone conversion without making the intended timezone explicit.

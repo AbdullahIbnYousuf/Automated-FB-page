@@ -181,7 +181,7 @@ Supabase PostgreSQL is authoritative application data. Old SQLite/upload files r
 
 ## 12. Authentication Safety
 
-- only `/api/health` may be public
+- only `/api/health` and non-secret OAuth discovery documents may be public backend endpoints; frontend privacy/deletion pages remain public
 - system status, posts, scheduling, and media require a valid Supabase access token
 - verify tokens server-side and compare the verified email to `OPERATOR_EMAIL`
 - never trust a browser-supplied user ID or email
@@ -214,3 +214,23 @@ A visible `DRY RUN` indicator should exist in the GUI when the app cannot publis
 ## 16. Future Features
 
 Analytics, comments, scoring, AI generation, and additional platforms require new threat/safety reviews. Do not assume V1's permissions or data model are sufficient for them.
+
+## 17. ChatGPT MCP safeguards
+
+- All MCP requests require a verified Supabase OAuth token bound to this MCP
+  resource, with the correct issuer, signature, expiry, scope, client and operator.
+- DCR does not authorize a user or tool. The operator signs in and consents on
+  the existing frontend. Passwords and privileged keys never enter conversation.
+- Signed ChatGPT download URLs are temporary credentials: never log, echo or
+  persist them. File downloads use a separate client without application tokens,
+  exact verified HTTPS hosts, public DNS checks and strict time/size bounds.
+- Both creation tools reserve durable request keys before side effects. Replays
+  return recorded outcomes; unfinished keys require inspection, never takeover.
+- Tool metadata and workflow instructions require explicit approval of exact
+  content, image, Page and timezone/time before real scheduling. OAuth consent
+  does not itself approve a particular test post. No extra PIN is implemented.
+- Default MCP scheduling to dry run. Never silently simulate an explicit real
+  request. The same two backend write switches remain mandatory.
+- Protect outcome persistence through ordinary request cancellation; a crashed
+  process may leave a blocked post/request for manual inspection. Never clear
+  those states automatically or infer `published` from elapsed time.

@@ -18,16 +18,19 @@ from app.api.system import router as system_router
 from app.config import get_settings
 from app.database import initialize_database
 from app.logging_config import configure_logging
+from app.mcp.server import McpHost
 from app.services.errors import AppError
 
 
 settings = get_settings()
 configure_logging(settings.log_level)
 logger = logging.getLogger(__name__)
+mcp_host = McpHost()
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    settings = get_settings()
     if settings.application_mode.lower() in {"production", "hosted"}:
         if not settings.auth_required or not settings.supabase_configured:
             raise RuntimeError(
@@ -43,22 +46,24 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
             "automation_enabled": settings.automation_enabled,
         },
     )
-    yield
+    async with mcp_host.run(settings):
+        yield
     logger.info("Application stopped", extra={"event": "application_stopped"})
 
 
 app = FastAPI(
     title=settings.application_name,
-    version="0.6.0",
+    version="0.7.0",
     lifespan=lifespan,
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.allowed_frontend_origins,
+    allow_origins=[*settings.allowed_frontend_origins, "https://chatgpt.com"],
     allow_credentials=False,
-    allow_methods=["GET", "POST", "PATCH", "OPTIONS"],
-    allow_headers=["Accept", "Authorization", "Content-Type"],
+    allow_methods=["GET", "POST", "PATCH", "OPTIONS", "DELETE"],
+    allow_headers=["Accept", "Authorization", "Content-Type", "MCP-Protocol-Version", "Mcp-Method", "Mcp-Name", "Mcp-Session-Id"],
+    expose_headers=["WWW-Authenticate", "Mcp-Session-Id"],
 )
 
 
@@ -122,3 +127,5 @@ app.include_router(system_router)
 app.include_router(facebook_router)
 app.include_router(posts_router)
 app.include_router(media_router)
+# Last: MCP's /mcp and public OAuth metadata; existing API routes keep precedence.
+app.mount("/", mcp_host)

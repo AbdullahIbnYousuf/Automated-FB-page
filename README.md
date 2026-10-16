@@ -2,6 +2,8 @@
 
 A single-operator web dashboard for managing already-created Facebook Page content. Phases 1–4 provide the hosted content workflow, dry-run scheduling, and a secure Page connection test. Phase 5 adds one guarded capability: scheduling an existing caption and one image to the configured Facebook Page through the official Meta Graph API.
 
+The private **The Test Lab Operations** ChatGPT plugin exposes the same services through an OAuth-protected Streamable HTTP MCP endpoint on the existing Render backend. See [ChatGPT setup and acceptance](docs/CHATGPT_MCP.md) for deployment, consent, file transfer, replay protection, and the first explicitly approved live test. Code availability alone does not establish a connected plugin or successful live scheduling.
+
 ## Current architecture
 
 ```text
@@ -139,6 +141,9 @@ Never add these values to Cloudflare Pages, Vite variables, Supabase rows, commi
 Public:
 
 - `GET /api/health`
+- `GET /.well-known/oauth-protected-resource/mcp` — public MCP OAuth configuration only
+
+The frontend also provides public `/privacy` and `/data-deletion` pages. `/oauth/consent` preserves the existing operator login and verifies authorization before approval.
 
 Requires a valid authorized Supabase Bearer token:
 
@@ -153,6 +158,8 @@ Requires a valid authorized Supabase Bearer token:
 - `GET /api/media/{object_path}`
 
 Private images are proxied through the authenticated backend. Supabase secret keys, database credentials, and Facebook tokens never enter the frontend.
+
+`/mcp` is protected by Supabase OAuth on every request. It provides eight tools for status, connection, post retrieval/creation/editing and scheduling. MCP scheduling defaults to `dry_run`; explicit real-mode requests fail unless both publishing switches are enabled. The dashboard keeps its environment-selected scheduling behavior.
 
 The connection test targets Graph API `v26.0` and sends exactly `GET /v26.0/{page-id}?fields=id,name` with the Page token in the HTTPS `Authorization` header.
 

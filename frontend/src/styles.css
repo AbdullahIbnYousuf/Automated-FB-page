@@ -1365,6 +1365,11 @@ h3 {
   line-height: 1.5;
 }
 
+.consent-card { width: min(580px, 100%); }
+.consent-capabilities { padding-left: 20px; color: var(--muted); font-size: 0.9rem; line-height: 1.7; }
+.consent-capabilities li + li { margin-top: 8px; }
+.consent-signout { display: block; margin: 22px auto 0; border: 0; background: transparent; color: var(--blue); cursor: pointer; font-size: 0.8rem; }
+
 .login-card > small {
   display: block;
   margin-top: 18px;

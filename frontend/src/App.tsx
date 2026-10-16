@@ -1,4 +1,4 @@
-import { Route, Routes } from "react-router-dom";
+import { Route, Routes, useLocation } from "react-router-dom";
 
 import { AuthProvider, useAuth } from "./auth/AuthContext";
 import { AppShell } from "./components/AppShell";
@@ -12,16 +12,19 @@ import { OverviewPage } from "./pages/OverviewPage";
 import { PostDetailsPage } from "./pages/PostDetailsPage";
 import { PostsPage } from "./pages/PostsPage";
 import { SettingsPage } from "./pages/SettingsPage";
+import { OAuthConsentPage } from "./pages/OAuthConsentPage";
 import { SystemStatusProvider } from "./state/SystemStatusContext";
 
 function AuthenticatedApplication() {
   const { loading, passwordSetupRequired, session } = useAuth();
+  const location = useLocation();
 
   if (loading) {
     return <main className="login-page"><p>Checking operator session…</p></main>;
   }
   if (!session) return <LoginPage />;
   if (passwordSetupRequired) return <PasswordSetupPage />;
+  if (location.pathname === "/oauth/consent") return <OAuthConsentPage />;
 
   return (
     <SystemStatusProvider>
