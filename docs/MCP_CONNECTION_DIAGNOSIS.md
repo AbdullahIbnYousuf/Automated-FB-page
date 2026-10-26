@@ -75,7 +75,7 @@ and [runtime implementation](https://github.com/openai/codex/blob/main/codex-rs/
 - Regression results: 111 backend/package tests, 10 frontend consent tests,
   frontend build/type checking, Python compilation and bundle secret-pattern scan passed.
 
-## Remaining interactive acceptance
+## Interactive acceptance history
 
 ### Follow-up: opaque authorization ID validation
 
@@ -110,3 +110,46 @@ After the client has authenticated, verify `initialize`, all eight entries in
 `test_facebook_connection`. These authenticated production calls are not claimed
 complete by a parser test or mocked protocol test. Record their actual outcomes;
 an expired Meta token would be a separate connection result, not missing MCP tools.
+
+## Authenticated ChatGPT tool acceptance — 26 October 2026
+
+This supersedes the pending login and read-only tool-call checks above, but not
+the separate image-transfer or real-scheduling acceptance criteria.
+
+During the post-OAuth investigation, the actual conversation runtime exposed
+the existing plugin's `mcp__the_test_lab_operations` namespace. Its eight
+discovered tool contracts were available: `get_system_status`,
+`test_facebook_connection`, `list_posts`, `get_post`, `create_post`, `update_post`,
+`schedule_post`, and `create_and_schedule_post`. The effective private plugin
+was still `0.1.1`, with the same ID, native HTTP URL and `email` scope.
+
+Live calls through that ChatGPT plugin, not a mock or independent local client:
+
+- `get_system_status` at `2026-10-26T12:47:44.597184Z`: `ok=true`, production,
+  authentication required, `publish_mode=dry_run`, `automation_enabled=false`,
+  `publishing_enabled=false`, timezone `Asia/Dhaka`.
+- `test_facebook_connection` at `2026-10-26T12:47:44.684213Z`: `ok=true`,
+  `connected=true`, Page `The Test Lab` (`1252648174595527`), Graph API `v26.0`.
+  `publishing_capability_verified=false`; no write was attempted.
+
+The deployed verifier requires a valid signature, exact Supabase issuer and MCP
+audience, expiry, `email` scope, OAuth client ID and operator identity on every
+request. These protected calls passed those checks; no credential was extracted
+or printed. Public health/resource discovery and authorization-server discovery
+were rechecked as HTTP 200; anonymous initialization still returns HTTP 401
+with the correct resource-metadata challenge.
+
+Render access logs at `12:46:47Z` show the native client's successful startup
+POSTs (HTTP 200), notification responses (HTTP 202), and subsequent successful
+POSTs. Raw initialization and list-result bodies are not logged, so this audit
+does not claim a captured raw `initialize` response or negotiated version. The
+actual client's eight exposed contracts and successful protected tool calls
+provide end-to-end discovery/call evidence, beyond the earlier parser tests.
+
+No new backend, OAuth, publishing-setting or plugin changes were necessary for
+this verification. The missing-tool report stopped reproducing once the runtime
+exposed the authenticated namespace during this turn. The exact internal reason
+for the earlier conversation's missing exposure cannot be established from the
+available logs; it is not evidence of a new backend token/protocol failure.
+Other ChatGPT surfaces or older conversations are not implicitly verified by
+this result. No creation, editing, scheduling or image transfer was tested here.
