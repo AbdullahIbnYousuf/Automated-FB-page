@@ -232,6 +232,13 @@ approval. Its authorization ID survives login/password setup. The SQL token
 hook binds this project's scheduler OAuth grants to the canonical `/mcp` audience
 on issuance and refresh; ordinary dashboard tokens are unchanged.
 
+The desktop package uses the Codex compatibility manifest with a native HTTP
+server and `email` scope. This avoids the portable OAuth-extension parser issue
+documented in `MCP_CONNECTION_DIAGNOSIS.md`; the server still requires OAuth on
+every request. Native consent may return to Supabase-validated numeric loopback
+callbacks on ephemeral ports, in addition to the existing ChatGPT HTTPS callbacks.
+The frontend never follows an arbitrary redirect supplied in a URL parameter.
+
 ChatGPT file objects supply a temporary URL and file ID. An isolated downloader
 accepts verified HTTPS file hosts only, rejects private DNS answers, checks
 redirects, and bounds time/bytes. No application credentials accompany downloads.

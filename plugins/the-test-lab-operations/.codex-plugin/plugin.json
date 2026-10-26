@@ -1,0 +1,19 @@
+{
+  "name": "the-test-lab-operations",
+  "version": "0.1.1",
+  "description": "Manage prepared content and safely schedule image posts for The Test Lab Facebook Page.",
+  "author": { "name": "The Test Lab" },
+  "homepage": "https://facebook-page-operations-dashboard.pages.dev",
+  "repository": "https://github.com/AbdullahIbnYousuf/Automated-FB-page",
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "The Test Lab Operations",
+    "shortDescription": "Schedule The Test Lab posts",
+    "longDescription": "Connect the authorized operator account to manage drafts, attach one image and schedule approved Facebook Page content with the existing publishing safeguards.",
+    "developerName": "The Test Lab",
+    "category": "Productivity",
+    "capabilities": [],
+    "defaultPrompt": "Check The Test Lab's connection and help me prepare an image post for approval."
+  }
+}

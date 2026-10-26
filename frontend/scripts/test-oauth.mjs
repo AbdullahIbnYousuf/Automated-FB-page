@@ -6,7 +6,7 @@ import ts from "typescript";
 // Use the existing TypeScript compiler and Node test runner; no test framework dependency.
 const source = readFileSync(new URL("../src/auth/oauth-consent.ts", import.meta.url), "utf8");
 const javascript = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText;
-const { loadConsent, decideConsent, chatgptRedirect, passwordSetupReturnUrl } = await import(`data:text/javascript;base64,${Buffer.from(javascript).toString("base64")}`);
+const { loadConsent, decideConsent, oauthRedirect, passwordSetupReturnUrl } = await import(`data:text/javascript;base64,${Buffer.from(javascript).toString("base64")}`);
 const id = "00000000-0000-4000-8000-000000000001";
 const callback = "https://chatgpt.com/connector/oauth/test-callback";
 const details = { authorization_id: id, redirect_uri: callback, client: { name: "ChatGPT" }, user: { email: "operator@example.com" }, scope: "email" };
@@ -61,13 +61,46 @@ test("expired consent errors are sanitized", async () => {
   }), error => !error.message.includes("provider-private-detail") && error.message.includes("expired"));
 });
 
-test("redirects cannot escape the verified ChatGPT callbacks", async () => {
+test("redirects cannot escape verified web or native callbacks", async () => {
   for (const url of ["javascript:alert(1)", "https://evil.example/callback", "https://chatgpt.com.evil.example/connector/oauth/x", "https://chatgpt.com/other", "https://user:password@chatgpt.com/connector/oauth/x"]) {
-    assert.throws(() => chatgptRedirect(url));
+    assert.throws(() => oauthRedirect(url));
   }
   await assert.rejects(loadConsent(id, async () => {}, {
     getAuthorizationDetails: async () => ({ data: { redirect_url: "https://evil.example" } }),
   }));
+});
+
+test("native consent accepts only the provider-validated loopback callback", async () => {
+  const native = "http://127.0.0.1:45881/callback/test_callback_123";
+  const calls = [];
+  const result = await loadConsent(id, async () => calls.push("verify"), {
+    getAuthorizationDetails: async () => { calls.push("details"); return { data: { ...details, redirect_uri: native } }; },
+  });
+  assert.deepEqual(calls, ["verify", "details"]);
+  assert.equal(result.redirect_uri, native);
+  for (const approve of [true, false]) {
+    const destination = `${native}?${approve ? "code=one-use-code" : "error=access_denied"}&state=test-state`;
+    const decision = async (_, options) => {
+      assert.equal(options.skipBrowserRedirect, true);
+      return { data: { redirect_url: destination } };
+    };
+    assert.equal(await decideConsent(id, approve, async () => {}, {
+      approveAuthorization: decision, denyAuthorization: decision,
+    }), destination);
+  }
+  assert.equal(oauthRedirect("http://127.0.0.1:45881/callback"), "http://127.0.0.1:45881/callback");
+});
+
+test("native callback validation rejects local-network and URL tricks", () => {
+  for (const url of [
+    "http://localhost:45881/callback", "http://127.0.0.2:45881/callback",
+    "http://192.168.1.1:45881/callback", "http://2130706433:45881/callback",
+    "http://127.1:45881/callback", "http://127.0.0.1:80/callback",
+    "http://127.0.0.1:45881/other", "http://127.0.0.1:45881/callback/short",
+    "http://127.0.0.1:45881/callback/test_callback#fragment",
+    "http://user:password@127.0.0.1:45881/callback",
+    "https://127.0.0.1:45881/callback", "https://chatgpt.com:444/connector/oauth/x",
+  ]) assert.throws(() => oauthRedirect(url), url);
 });
 
 test("invalid authorization IDs cause no provider request", async () => {

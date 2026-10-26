@@ -91,16 +91,32 @@ register. Registration by itself grants no account or tool access.
 5. Start a chat, select this plugin with `@`, and ask for system status and the
    Facebook connection test.
 
-Alternatively, upload the portable package under `plugins/the-test-lab-operations`
-through the supported private-plugin creation tool. It contains `plugin.json`,
-`mcp.json` and workflow instructions; it does not deploy the server or complete
-the operator's consent. Reuse an existing matching plugin rather than creating
-duplicates. Record the returned plugin ID and URL in the acceptance evidence.
+The existing private plugin uses the desktop compatibility package under
+`plugins/the-test-lab-operations`: `.codex-plugin/plugin.json`, `.mcp.json` and
+the unchanged workflow skill. Version `0.1.1` avoids the desktop portable-parser
+bug described in [connection diagnostics](MCP_CONNECTION_DIAGNOSIS.md).
+Update the same private plugin rather than creating duplicates. Publishing a
+package does not deploy its server or complete the operator's consent.
 
 Supabase manages DCR callback registration. Do not guess a callback URL. If
 manually registering a client, use the exact callback shown in ChatGPT's MCP
 management screen. The consent page accepts only Supabase-returned HTTPS
-ChatGPT callback URLs and never a model/user-supplied redirect.
+ChatGPT callbacks or the native client's narrowly validated
+`http://127.0.0.1:<port>/callback[/<nonce>]` callback. It never accepts a
+model/user-supplied redirect. Supabase validates the exact registered URI;
+the backend verifies the operator before the frontend loads or decides consent.
+OAuth PKCE/state and backend JWT checks remain mandatory.
+
+### Existing Ubuntu desktop installation
+
+Refresh/update the existing plugin to `0.1.1` and fully restart the application
+to discard the old `0.1.0` parser result. Check Settings → MCP servers for the
+plugin-provided `the-test-lab-operations` entry, then use its sign-in/authorize
+action. Complete operator login and consent in the browser. The native client
+uses DCR discovered from the server's 401 challenge and requests `email` from
+`.mcp.json`; it can add `offline_access` for refresh. No passwords, tokens or
+static client secrets belong in the package. Do not add a duplicate standalone
+server or remove authentication to make discovery succeed.
 
 ## Images and replay behavior
 

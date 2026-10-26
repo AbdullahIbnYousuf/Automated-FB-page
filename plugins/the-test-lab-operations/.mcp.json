@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "the-test-lab-operations": {
+      "type": "http",
+      "url": "https://facebook-page-operations-api.onrender.com/mcp",
+      "scopes": ["email"]
+    }
+  }
+}
