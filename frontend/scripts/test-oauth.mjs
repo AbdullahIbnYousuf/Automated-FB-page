@@ -104,7 +104,34 @@ test("native callback validation rejects local-network and URL tricks", () => {
 });
 
 test("invalid authorization IDs cause no provider request", async () => {
-  await assert.rejects(loadConsent(null, () => assert.fail(), { getAuthorizationDetails: () => assert.fail() }));
+  for (const invalid of [null, "", " ", "../other", "id?query", "id#fragment", "a".repeat(129)]) {
+    await assert.rejects(loadConsent(invalid, () => assert.fail(), { getAuthorizationDetails: () => assert.fail() }));
+  }
+});
+
+test("opaque Supabase authorization IDs survive loading, approval and denial", async () => {
+  const opaqueId = "AbCdEfGhIjKlMnOpQrStUvWxYz012345";
+  assert.equal(opaqueId.length, 32);
+  const calls = [];
+  const result = await loadConsent(opaqueId, async () => calls.push("verify"), {
+    getAuthorizationDetails: async actualId => {
+      assert.equal(actualId, opaqueId);
+      calls.push("details");
+      return { data: { ...details, authorization_id: opaqueId } };
+    },
+  });
+  assert.deepEqual(calls, ["verify", "details"]);
+  assert.equal(result.authorization_id, opaqueId);
+  for (const approve of [true, false]) {
+    const decision = async actualId => {
+      assert.equal(actualId, opaqueId);
+      return { data: { redirect_url: callback } };
+    };
+    assert.equal(await decideConsent(opaqueId, approve, async () => {}, {
+      approveAuthorization: decision, denyAuthorization: decision,
+    }), callback);
+  }
+  assert.equal(passwordSetupReturnUrl("/oauth/consent", `?authorization_id=${opaqueId}&code=secret`), `/oauth/consent?authorization_id=${opaqueId}`);
 });
 
 test("password setup retains only the consent ID and strips recovery parameters", () => {

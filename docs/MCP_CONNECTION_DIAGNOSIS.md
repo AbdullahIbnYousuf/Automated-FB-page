@@ -77,6 +77,28 @@ and [runtime implementation](https://github.com/openai/codex/blob/main/codex-rs/
 
 ## Remaining interactive acceptance
 
+### Follow-up: opaque authorization ID validation
+
+After updating the plugin, the operator reached the authentication flow but
+the frontend displayed `Start the connection from ChatGPT to obtain a valid
+authorization request`. A real Supabase authorization redirect contained a
+32-character opaque ID; the frontend incorrectly required a 36-character UUID.
+The format guard now accepts bounded URL-safe opaque IDs rather than assuming
+UUID syntax. Supabase still validates the request after backend operator
+verification; redirect restrictions and OAuth security are unchanged.
+
+Added a regression test for loading, approving, denying and retaining a
+32-character opaque ID through password setup, plus invalid-path/length cases.
+All 11 consent tests and the production build/type check pass. A contract probe
+with a real provider-issued ID confirms it passes the corrected guard without
+printing the ID or authenticating an operator. Deployed to the existing Pages
+project, preview `https://4a2e4bab.facebook-page-operations-dashboard.pages.dev`,
+production bundle `index-5B8fDPC9.js`. No new plugin release is required.
+
+Close the failed browser tab and start a fresh authentication request from the
+existing Ubuntu plugin. Do not paste the authorization ID, code or tokens into
+chat. Actual consent and authenticated tool calls remain interactive acceptance.
+
 The application still cached `0.1.0` at the end of source inspection. Update or
 refresh this existing plugin to `0.1.1` and fully restart the Ubuntu application.
 Check Settings → MCP servers for its plugin-provided entry; use its native

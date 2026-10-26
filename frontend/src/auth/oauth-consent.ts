@@ -20,7 +20,9 @@ export function oauthRedirect(value: string): string {
 }
 
 function validateAuthorizationId(value: string | null): asserts value is string {
-  if (!value || !/^[0-9a-f-]{36}$/i.test(value)) {
+  // Supabase currently issues opaque 32-character IDs, not UUIDs. Bound and
+  // constrain the path segment here; only Supabase can validate the request.
+  if (!value || !/^[A-Za-z0-9_-]{1,128}$/.test(value)) {
     throw new Error("Start the connection from ChatGPT to obtain a valid authorization request.");
   }
 }
