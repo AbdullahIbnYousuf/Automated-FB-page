@@ -53,6 +53,24 @@ OpenAI compatibility metadata, and enforced independently on every HTTP request.
    before a whole-project `supabase config push` so unrelated hosted settings are preserved.
 7. Verify discovery, anonymous 401 responses, operator login and OAuth consent.
 
+For an existing hosted project, prefer a scoped Management API
+`PATCH /v1/projects/{project-ref}/config/auth` over a full configuration push.
+The scheduler needs only these fields, after the migration and frontend deploy:
+
+```json
+{
+  "oauth_server_enabled": true,
+  "oauth_server_allow_dynamic_registration": true,
+  "oauth_server_authorization_path": "/oauth/consent",
+  "hook_custom_access_token_enabled": true,
+  "hook_custom_access_token_uri": "pg-functions://postgres/public/scheduler_mcp_access_token_hook"
+}
+```
+
+Reuse provider credentials securely; never paste a Management API token into
+documentation or chat. Compare configuration before/after and retain the
+existing Site URL, disabled signup and anonymous-login settings.
+
 The project already has an ES256 signing key. No secret JWT signing key is needed
 by this backend. The hook adds the canonical MCP audience to OAuth access tokens
 with the granted `email` scope; non-OAuth dashboard tokens remain unchanged.
@@ -118,6 +136,46 @@ returns a simulation. The dashboard retains its environment-selected behavior.
 All results identify simulation, external request, attempt and Meta reference.
 
 ## Tests and acceptance
+
+### Rollout evidence — 26 October 2026
+
+This entry supersedes the pending deployment items in the 16 October entry.
+
+- Applied and verified migration `20261016000100` on the existing linked
+  Supabase project. RLS is enabled on `mcp_operations`; `anon` and
+  `authenticated` have no table access. The intended Auth service role
+  can execute the token hook; browser roles cannot.
+- Enabled OAuth, dynamic registration, `/oauth/consent` and the token hook with
+  a scoped PATCH. The before/after comparison changed exactly the five fields
+  above. Public signup remains disabled and anonymous sign-in remains disabled.
+  Public authorization-server discovery now returns HTTP 200 and advertises
+  registration, S256 PKCE, and refresh-token support.
+- Tested the live SQL hook with synthetic claims, without issuing tokens:
+  scheduler OAuth audience becomes the canonical MCP URL; ordinary dashboard
+  audience remains `authenticated`. Actual OAuth issuance/refresh is not yet
+  accepted through ChatGPT.
+- Deployed the consent frontend to the existing Cloudflare Pages project:
+  `https://25e6de9d.facebook-page-operations-dashboard.pages.dev`.
+  Production uses `index-CS5j_ngM.js`. `/privacy`, `/data-deletion` and
+  `/oauth/consent` return HTTP 200 directly. Legal pages remain signed-out/public
+  and survive refresh; signed-out consent requires operator login and retains
+  `authorization_id`. Checked mobile width 375px, no horizontal overflow or
+  console errors. Privileged-secret-pattern scan of the bundle passed.
+- Existing Render publishing settings were enabled before this rollout. Set
+  `AUTOMATION_ENABLED=false` and `PUBLISH_MODE=dry_run`, verified the settings,
+  and redeployed the same free service with the canonical `MCP_RESOURCE_URL`.
+  Deployment `dep-dbfit98u01pc73beqd50` is live on commit `6da9570`.
+  No Meta credentials were changed and no Facebook write was made.
+- Backend health/resource discovery return HTTP 200. Anonymous status, posts,
+  media and MCP initialization return HTTP 401; MCP supplies its OAuth
+  resource-metadata challenge. Backend tests: 109 passed; consent tests: 8
+  passed; Python compilation and frontend build/type checks passed again.
+- Reused and verified the existing private plugin, version `0.1.0`:
+  [The Test Lab Operations](https://chatgpt.com/plugins/plugins_6ad1a1de4a448191873aba41eb265f96).
+  Operator installation/connection/login/consent is the remaining handoff.
+  Authenticated tool discovery, uploaded and generated image transfers, token
+  refresh, and dry-run scheduling must be tested after that handoff. Real
+  scheduling still requires separate approval of exact content/Page/time.
 
 ### Rollout evidence — 16 October 2026
 

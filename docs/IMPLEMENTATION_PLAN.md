@@ -10,7 +10,7 @@
 - Phase 4: complete; hosted Page identity verified for The Test Lab
 - Phase 5: implemented; guarded scheduled-photo code, tests, and hosted dry-run deployment complete after deployment verification
 - Phase 6 and later: not started
-- Private ChatGPT MCP integration: implemented with isolated HTTP/OAuth/image/replay tests; hosted connection, actual ChatGPT file transfer and real acceptance remain separate checks in `docs/CHATGPT_MCP.md`
+- Private ChatGPT MCP integration: implemented and hosted migration/OAuth/consent deployment verified on 26 October 2026; operator ChatGPT connection, actual file transfer and real acceptance remain pending separate checks in `docs/CHATGPT_MCP.md`. Runtime publishing gates are disabled (`false` / `dry_run`).
 
 ## Principle
 
