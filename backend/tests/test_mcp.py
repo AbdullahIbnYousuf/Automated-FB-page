@@ -389,6 +389,35 @@ def test_forged_bridge_identity_is_not_authenticated(mcp_client, monkeypatch):
     assert rpc(mcp_client, "tools/call", {"name": "get_system_status"}).status_code == 401
 
 
+def test_rejected_bridge_image_creates_no_draft_and_replays_without_download(
+    mcp_client, fake_media, monkeypatch, caplog,
+):
+    monkeypatch.setattr(get_settings(), "mcp_bridge_client_id", "chatgpt-client")
+    downloader = ChatGPTFileDownloader(
+        get_settings(), transport=httpx.MockTransport(lambda r: pytest.fail("Rejected image reached HTTP")),
+    )
+    monkeypatch.setattr(mcp_host.tools.downloader, "download", downloader.download)
+    args = create_args("rejected-bridge-image-001")
+    args["image"]["download_url"] = "https://unverified.example/private-path-canary?sig=private-query-canary"
+    failed = call(mcp_client, "create_post", args)
+    assert failed["error"]["code"] == "FILE_URL_NOT_ALLOWED"
+    assert failed["error"]["post_id"] is None
+    assert not fake_media.objects
+    # A refreshed URL does not clear a recorded request outcome or cause a retry.
+    args["image"]["download_url"] = "https://files.oaiusercontent.com/new-url"
+    replay = call(mcp_client, "create_post", args)
+    assert replay["replayed"] is True
+    assert replay["error"]["code"] == "FILE_URL_NOT_ALLOWED"
+    assert call(mcp_client, "list_posts")["data"]["total"] == 0
+    records = [r for r in caplog.records if getattr(r, "event", None) == "mcp_file_url_rejected"]
+    assert len(records) == 1
+    assert records[0].rejection_category == "host_not_allowed"
+    assert records[0].hostname == "unverified.example"
+    for private in ("private-path-canary", "private-query-canary"):
+        assert private not in json.dumps(records[0].__dict__, default=str)
+        assert private not in json.dumps(failed)
+
+
 def test_bridge_all_allowed_tools_and_replays_never_publish(mcp_client, fake_media, monkeypatch):
     from app.integrations.facebook.client import FacebookClient
     from app.integrations.facebook.schemas import FacebookPageIdentity

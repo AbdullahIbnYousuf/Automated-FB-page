@@ -1,6 +1,8 @@
 """Bounded downloads of temporary ChatGPT file inputs, without credential forwarding."""
 
 import ipaddress
+import logging
+import re
 import socket
 from io import BytesIO
 from pathlib import Path
@@ -17,6 +19,24 @@ from app.config import Settings
 from app.services.errors import AppError
 
 
+logger = logging.getLogger(__name__)
+
+
+def diagnostic_hostname(host: str | None) -> str | None:
+    """Return only a bounded hostname, never malformed authority/path text."""
+    if not host or len(host) > 253 or "%" in host:
+        return None
+    try:
+        return ipaddress.ip_address(host).compressed
+    except ValueError:
+        pass
+    try:
+        normalized = host.encode("idna").decode("ascii").lower()
+    except UnicodeError:
+        return None
+    return normalized if re.fullmatch(r"[a-z0-9.-]{1,253}", normalized) else None
+
+
 class ChatGPTFile(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -31,26 +51,56 @@ class ChatGPTFileDownloader:
         self.settings = settings
         self.transport = transport
 
-    async def _validate_url(self, value: str) -> None:
+    def _url_rejected(self, category: str, host: str | None, hop: int) -> AppError:
+        # Never include the URL, exception, file ID or request metadata here.
+        logger.warning(
+            "ChatGPT file URL rejected",
+            extra={
+                "event": "mcp_file_url_rejected",
+                "rejection_category": category,
+                "hostname": diagnostic_hostname(host),
+                "redirect_hop": hop,
+            },
+        )
+        return AppError(
+            code="FILE_URL_NOT_ALLOWED", status_code=422,
+            message="The image URL must use a verified ChatGPT HTTPS file host. Reattach the image or use the dashboard.",
+        )
+
+    async def _validate_url(self, value: str, *, redirect_hop: int = 0) -> None:
+        host = None
         try:
             url = urlsplit(value)
             host = (url.hostname or "").lower()
-            allowed = {h.strip().lower() for h in self.settings.mcp_file_allowed_hosts.split(",") if h.strip()}
-            if url.scheme != "https" or url.username is not None or url.password is not None or url.fragment:
-                raise ValueError()
-            if url.port not in {None, 443} or host not in allowed or "*" in host:
-                raise ValueError()
-            # Even an explicitly configured host must never resolve to a private destination.
+            port = url.port
+        except ValueError:
+            raise self._url_rejected("url_parse_error", host, redirect_hop) from None
+        if url.scheme != "https":
+            raise self._url_rejected("scheme_not_https", host, redirect_hop)
+        if url.username is not None or url.password is not None:
+            raise self._url_rejected("userinfo_not_allowed", host, redirect_hop)
+        if url.fragment:
+            raise self._url_rejected("fragment_not_allowed", host, redirect_hop)
+        if port not in {None, 443}:
+            raise self._url_rejected("port_not_allowed", host, redirect_hop)
+        allowed = {h.strip().lower() for h in self.settings.mcp_file_allowed_hosts.split(",") if h.strip()}
+        if not host or host not in allowed or "*" in host:
+            raise self._url_rejected("host_not_allowed", host, redirect_hop)
+        # Even an explicitly configured host must never resolve to a private destination.
+        try:
             addresses = await anyio.to_thread.run_sync(
                 lambda: socket.getaddrinfo(host, 443, type=socket.SOCK_STREAM)
             )
-            if not addresses or any(not ipaddress.ip_address(item[4][0]).is_global for item in addresses):
-                raise ValueError()
-        except (ValueError, OSError) as exc:
-            raise AppError(
-                code="FILE_URL_NOT_ALLOWED", status_code=422,
-                message="The image URL must use a verified ChatGPT HTTPS file host. Reattach the image or use the dashboard.",
-            ) from exc
+        except OSError:
+            raise self._url_rejected("dns_lookup_failed", host, redirect_hop) from None
+        if not addresses:
+            raise self._url_rejected("dns_no_addresses", host, redirect_hop)
+        try:
+            public = all(ipaddress.ip_address(item[4][0]).is_global for item in addresses)
+        except ValueError:
+            raise self._url_rejected("dns_invalid_address", host, redirect_hop) from None
+        if not public:
+            raise self._url_rejected("dns_non_public", host, redirect_hop)
 
     async def download(self, file: ChatGPTFile) -> UploadFile:
         current_url = file.download_url
@@ -61,14 +111,17 @@ class ChatGPTFileDownloader:
                     follow_redirects=False, trust_env=False, transport=self.transport,
                     headers={"Accept": "image/jpeg,image/png", "Accept-Encoding": "identity"},
                 ) as client:
-                    for _ in range(3):
-                        await self._validate_url(current_url)
+                    for hop in range(3):
+                        await self._validate_url(current_url, redirect_hop=hop)
                         async with client.stream("GET", current_url) as response:
                             if response.is_redirect:
                                 destination = response.headers.get("location")
                                 if not destination:
                                     break
-                                current_url = urljoin(current_url, destination)
+                                try:
+                                    current_url = urljoin(current_url, destination)
+                                except ValueError:
+                                    raise self._url_rejected("url_parse_error", None, hop + 1) from None
                                 continue
                             if response.status_code != 200:
                                 raise AppError(
