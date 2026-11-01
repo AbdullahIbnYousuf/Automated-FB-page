@@ -14,8 +14,9 @@ from app.integrations.facebook.client import FacebookClient
 from app.integrations.facebook.errors import FacebookWriteError, FacebookWriteErrorCode
 from app.integrations.facebook.schemas import FacebookScheduledPhoto
 from app.models.post import Post, PostStatus
+from app.services.media_service import MediaService, StoredObject
 from tests.conftest import InMemoryMediaService
-from tests.helpers import create_post, future_local_time
+from tests.helpers import corrupt_image_bytes, create_post, future_local_time, image_bytes
 
 
 def enable_facebook_scheduling(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -341,3 +342,38 @@ def test_already_scheduled_post_cannot_create_second_meta_write(
     assert first.status_code == 200
     assert second.status_code == 409
     assert calls == 1
+
+
+@pytest.mark.parametrize("case", [
+    "jpeg-pixels", "png-ending-1", "png-ending-4", "png-ending-8",
+    "png-pixels", "apng-later-frame",
+])
+def test_corrupt_stored_images_never_reach_meta(client, fake_media, monkeypatch, case):
+    enable_facebook_scheduling(monkeypatch)
+    content, mime, filename = corrupt_image_bytes(case)
+    post = create_post(
+        client, filename=filename, mime_type=mime,
+        content=image_bytes("JPEG" if mime == "image/jpeg" else "PNG"),
+    ).json()
+    object_path = post["image_url"].removeprefix("/api/media/")
+    fake_media.objects[object_path] = StoredObject(content=content, mime_type=mime)
+    # Use production stored-image validation with the fake private byte store.
+    validator = MediaService(get_settings())
+    monkeypatch.setattr(validator, "get_object", fake_media.get_object)
+    monkeypatch.setattr(fake_media, "get_validated_object", validator.get_validated_object)
+    writes = []
+
+    async def forbidden_write(self, **kwargs):
+        writes.append(True)
+        raise AssertionError("Corrupt stored image reached Meta")
+
+    monkeypatch.setattr(FacebookClient, "schedule_page_photo", forbidden_write)
+    response = client.post(f"/api/posts/{post['id']}/schedule")
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "INVALID_STORED_IMAGE"
+    assert writes == []
+    persisted = client.get(f"/api/posts/{post['id']}").json()
+    assert persisted["status"] == "failed"
+    assert persisted["facebook_object_id"] is None
+    assert len(persisted["attempts"]) == 1
+    assert persisted["attempts"][0]["external_request_made"] is False

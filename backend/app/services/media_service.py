@@ -145,12 +145,13 @@ class MediaService:
                         status_code=422,
                     )
                 image.verify()
-            # JPEG verify() alone does not decode the pixel stream.
-            with Image.open(BytesIO(stored.content)) as decoded:
-                decoded.load()
+            self._decode_pixels(stored.content, expected_format)
         except AppError:
             raise
-        except (Image.DecompressionBombError, UnidentifiedImageError, OSError) as exc:
+        except (
+            Image.DecompressionBombError, UnidentifiedImageError, OSError,
+            SyntaxError, ValueError, EOFError,
+        ) as exc:
             raise AppError(
                 code="INVALID_STORED_IMAGE",
                 message="The stored image is not a valid JPEG or PNG image.",
@@ -237,11 +238,13 @@ class MediaService:
                         status_code=422,
                     )
                 image.verify()
-            with Image.open(BytesIO(content)) as decoded:
-                decoded.load()
+            self._decode_pixels(content, expected_format)
         except AppError:
             raise
-        except (Image.DecompressionBombError, UnidentifiedImageError, OSError) as exc:
+        except (
+            Image.DecompressionBombError, UnidentifiedImageError, OSError,
+            SyntaxError, ValueError, EOFError,
+        ) as exc:
             raise AppError(
                 code="INVALID_IMAGE",
                 message="The uploaded file is not a valid JPEG or PNG image.",
@@ -249,6 +252,24 @@ class MediaService:
             ) from exc
 
         return content, extension, expected_mime, display_name
+
+    def _decode_pixels(self, content: bytes, expected_format: str) -> None:
+        # Pillow can accept a PNG whose final IEND CRC bytes are missing.
+        # Require the complete terminal chunk as well as verify() and decoding.
+        if expected_format == "PNG" and not content.endswith(
+            b"\x00\x00\x00\x00IEND\xae\x42\x60\x82"
+        ):
+            raise ValueError("Incomplete PNG ending")
+        # JPEG verify() alone does not decode its pixel stream. For PNG, decode
+        # every frame too, so a valid first APNG frame cannot hide corrupt data.
+        with Image.open(BytesIO(content)) as decoded:
+            total_pixels = 0
+            for frame in range(getattr(decoded, "n_frames", 1)):
+                decoded.seek(frame)
+                total_pixels += decoded.width * decoded.height
+                if total_pixels > self.settings.max_image_pixels:
+                    raise ValueError("Decoded image exceeds the pixel limit")
+                decoded.load()
 
     def _object_url(self, object_path: str) -> str:
         self.validate_object_path(object_path)

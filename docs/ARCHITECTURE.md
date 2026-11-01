@@ -137,7 +137,7 @@ The backend validates the entire upload before Storage receives it:
 - one JPEG/PNG only
 - MIME, extension, and decoded content must agree
 - non-empty and at most 5 MiB
-- decoded dimensions below the configured pixel ceiling
+- full pixel decoding, complete PNG ending, and a decoded pixel budget across all frames
 - UUID object name under `posts/`
 - no overwrite and no client-controlled path
 
@@ -266,3 +266,5 @@ all posts, attempts, images and Meta credentials remain in this backend/Supabase
 The existing consent UI permits only this exact additional callback:
 https://facebook-scheduler-bridge.sassypear13.chatgpt.site/oauth/callback
 Existing callback and operator verification restrictions remain enforced.
+See [bridge contract and remaining setup](FACEBOOK_SCHEDULER_BRIDGE.md) for the
+caller-specific status flag, exact callback validation and local test evidence.
