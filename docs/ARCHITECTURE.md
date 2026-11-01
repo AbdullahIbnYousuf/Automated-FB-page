@@ -254,12 +254,17 @@ cancellation shield permits normal disconnects to finish outcome persistence;
 process death can still require inspection. Both MCP and REST use the existing
 atomic post claim, and draft updates lock the row against concurrent scheduling.
 
-## Private Sites bridge (pending deployment)
+## Private Sites bridge
 
 Facebook Scheduler Bridge is an additional private client, not a scheduler.
 It calls this backend's existing MCP tools. The configured MCP_BRIDGE_CLIENT_ID
-is restricted to status, Page read, list/get, draft creation and explicit dry_run
-scheduling. Other tools and all REST access using that client token are denied.
+is restricted to status, Page read, list/get, draft creation and scheduling.
+Scheduling defaults to dry_run. Explicit facebook_schedule additionally requires
+MCP_BRIDGE_ALLOW_LIVE_SCHEDULING=true, AUTOMATION_ENABLED=true and
+PUBLISH_MODE=facebook_schedule. The caller-specific bridge_live_scheduling_enabled
+flag is true only for that verified client with all three gates enabled;
+bridge_client_restricted remains true. Other tools and all REST access using
+that client token are denied. No startup task or worker processes existing posts.
 The dashboard and existing ChatGPT client grants are unchanged. The Sites
 credential vault contains encrypted delegated tokens and one-use PKCE state only;
 all posts, attempts, images and Meta credentials remain in this backend/Supabase.

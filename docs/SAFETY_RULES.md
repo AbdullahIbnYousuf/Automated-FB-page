@@ -231,6 +231,12 @@ Analytics, comments, scoring, AI generation, and additional platforms require ne
   does not itself approve a particular test post. No extra PIN is implemented.
 - Default MCP scheduling to dry run. Never silently simulate an explicit real
   request. The same two backend write switches remain mandatory.
+- The dedicated Sites bridge additionally requires
+  `MCP_BRIDGE_ALLOW_LIVE_SCHEDULING=true` for explicit real scheduling. Its
+  authenticated `bridge_live_scheduling_enabled` flag is true only for the
+  configured verified client with all three switches enabled. REST, editing and
+  combined creation/scheduling remain denied for that client. Capability setup
+  never approves a particular post or starts processing saved drafts.
 - Protect outcome persistence through ordinary request cancellation; a crashed
   process may leave a blocked post/request for manual inspection. Never clear
   those states automatically or infer `published` from elapsed time.

@@ -12,12 +12,13 @@ scheduling database, queue, image bucket or publishing implementation is needed.
 not a client secret. Use the exact ID of the dedicated Supabase OAuth client.
 Leaving it unset or empty preserves existing clients but does not establish a
 restricted bridge. The Sites bridge must refuse writes unless an authenticated
-`get_system_status` response has `bridge_client_restricted=true`.
+`get_system_status` response has `bridge_client_restricted=true`. Live scheduling
+also requires the caller-specific `bridge_live_scheduling_enabled=true` flag.
 
 The backend matches that setting against the `client_id` from the verified MCP
 access token, after signature, issuer, resource audience, expiry, scope and
 operator checks. Headers, tool arguments and client names cannot choose the
-identity. The flag is false for other clients, unset configuration and REST
+identity. The restriction flag is false for other clients, unset configuration and REST
 status responses; it does not describe whether publishing is globally enabled.
 
 | Restricted client's MCP action | Result |
@@ -27,17 +28,50 @@ status responses; it does not describe whether publishing is globally enabled.
 | `list_posts`, `get_post` | Allowed |
 | `create_post` | Allowed; saves one draft with a durable `request_key` |
 | `schedule_post` with `mode=dry_run` or omitted mode | Allowed; simulation only |
-| `schedule_post` with `mode=facebook_schedule` | `BRIDGE_ACTION_FORBIDDEN` |
+| `schedule_post` with `mode=facebook_schedule` | Allowed only with all three live gates below; otherwise `BRIDGE_ACTION_FORBIDDEN` |
 | `update_post` | `BRIDGE_ACTION_FORBIDDEN` |
 | `create_and_schedule_post` in any mode | `BRIDGE_ACTION_FORBIDDEN` |
 
 Denied actions stop before draft reservation, download, editing or scheduling.
-The restrictions still apply if the server's publishing gates are later enabled.
+Editing and combined creation/scheduling stay denied even when live scheduling
+is enabled.
 All protected REST routes, including private media, reject the restricted
 client's token with `BRIDGE_REST_FORBIDDEN` after Supabase authenticates that exact
 Bearer token. Public health and OAuth discovery remain public. The dashboard's
 ordinary operator session and other authorized OAuth clients retain their
 existing behavior and operator verification.
+
+## Explicit live scheduling capability
+
+`MCP_BRIDGE_ALLOW_LIVE_SCHEDULING` is a backend boolean that defaults to false.
+The verified dedicated bridge can explicitly request `mode=facebook_schedule`
+only when all three conditions hold:
+
+```env
+MCP_BRIDGE_ALLOW_LIVE_SCHEDULING=true
+AUTOMATION_ENABLED=true
+PUBLISH_MODE=facebook_schedule
+```
+
+`bridge_live_scheduling_enabled` is true only for that client with all three
+gates enabled. It is false for other clients, REST status, an unset bridge client
+ID, and every disabled/mixed gate combination. `bridge_client_restricted` remains
+true for the dedicated client, including when live capability is enabled.
+Authentication remains required (`AUTH_REQUIRED=true`). Missing/invalid opt-in
+configuration fails closed. Repository defaults remain false/dry_run.
+
+The Sites bridge exposes `schedule_post_live(post_id, confirmed=true)` only after
+approval of the exact caption, image, Page and future local time. It checks the
+authenticated capability flag, then calls the existing `schedule_post` with
+`mode=facebook_schedule`. The backend reuses the existing atomic claim, image
+decoding, time/Page validation, scheduling attempts and Meta adapter. Setup
+authorization does not approve any particular post. There is no automatic retry.
+The separate dry-run action always sends `mode=dry_run`; omitted MCP mode also
+remains dry_run regardless of the publishing switches.
+
+Enabling these settings starts no workers or queue processing and never submits
+existing draft/ready posts. Each live call must target one existing post.
+Dashboard and other authorized clients retain their existing mode selection.
 
 ## Consent callback
 
@@ -82,15 +116,15 @@ there is no automatic takeover or retry. Signed file URLs are not persisted.
 3. Verify real OAuth issuance and refresh, the authenticated restriction flag,
    Page identity read, actual image transfer, draft retrieval and a dry-run
    result with `external_request_made=false` and no Facebook ID. Local mocks do
-   not establish hosted acceptance. No real publishing check is required for
-   this bridge's allowed capabilities.
+   not establish hosted acceptance. Live-capability setup submits no post;
+   actual live acceptance requires a separately approved caption/image/Page/time.
 
 Exact environment-variable names:
 
 | Purpose | Variables |
 | --- | --- |
-| New optional backend setting | `MCP_BRIDGE_CLIENT_ID` |
-| Required safe settings | `AUTOMATION_ENABLED=false`, `PUBLISH_MODE=dry_run`, `AUTH_REQUIRED=true`, `APP_TIMEZONE=Asia/Dhaka` |
+| Optional backend bridge settings | `MCP_BRIDGE_CLIENT_ID`, `MCP_BRIDGE_ALLOW_LIVE_SCHEDULING` (default false) |
+| Safe defaults (intentional live override above) | `AUTOMATION_ENABLED=false`, `PUBLISH_MODE=dry_run`, `AUTH_REQUIRED=true`, `APP_TIMEZONE=Asia/Dhaka` |
 | Existing Supabase/operator settings, reused | `DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`, `SUPABASE_STORAGE_BUCKET`, `OPERATOR_EMAIL` |
 | Existing MCP resource/file settings | `MCP_RESOURCE_URL`, `MCP_FILE_ALLOWED_HOSTS`, `MCP_FILE_TIMEOUT_SECONDS` |
 | Existing image limits | `MAX_UPLOAD_BYTES`, `MAX_IMAGE_PIXELS` |
@@ -124,3 +158,15 @@ Run from `frontend`: `npm test` and `npm run build`.
 Tests use isolated SQLite, fake private storage, synthetic OAuth tokens and
 mocked Meta boundaries. They do not access hosted secrets or publish to Facebook.
 This review does not register clients, change hosted settings, deploy or merge.
+
+## Live-capability validation — 1 November 2026
+
+The later user-authorized setup adds the default-off bridge opt-in above and
+deploys it on the existing backend. Local checks passed: **235 backend tests**,
+**15 frontend consent tests**, Python compilation, dependency consistency and
+the frontend production build. Meta calls in tests are mocked; setup performs
+no live scheduling call. Coverage includes all eight combinations of the three
+gates, caller-specific status, authenticated REST denial with live enabled,
+editing/combined-action denial, omitted/explicit dry-run mode, image decoding,
+durable replay/conflict, concurrent attempts, unknown-outcome blocking, and
+preservation of existing draft/ready records without automatic processing.

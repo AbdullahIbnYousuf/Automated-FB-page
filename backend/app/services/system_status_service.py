@@ -25,6 +25,7 @@ class SystemStatusResponse(BaseModel):
     facebook: FacebookConfigurationStatus
     current_time_utc: datetime
     bridge_client_restricted: bool = False
+    bridge_live_scheduling_enabled: bool = False
 
 
 def system_status(settings: Settings) -> SystemStatusResponse:

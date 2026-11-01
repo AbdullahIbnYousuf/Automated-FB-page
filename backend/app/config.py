@@ -59,8 +59,9 @@ class Settings(BaseSettings):
     mcp_resource_url: str = "https://facebook-page-operations-api.onrender.com/mcp"
     mcp_file_allowed_hosts: str = "files.oaiusercontent.com"
     mcp_file_timeout_seconds: float = 20.0
-    # Dedicated Sites OAuth client: MCP read/create/dry-run only; no REST access.
+    # Dedicated Sites OAuth client: restricted MCP actions; no REST access.
     mcp_bridge_client_id: str | None = None
+    mcp_bridge_allow_live_scheduling: bool = False
 
     @property
     def mcp_issuer_url(self) -> str:
