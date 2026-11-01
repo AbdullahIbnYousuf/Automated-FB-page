@@ -4,7 +4,7 @@ A single-operator web dashboard for managing already-created Facebook Page conte
 
 The private **The Test Lab Operations** ChatGPT plugin exposes the same services through an OAuth-protected Streamable HTTP MCP endpoint on the existing Render backend. See [ChatGPT setup and acceptance](docs/CHATGPT_MCP.md) for deployment, consent, file transfer, replay protection, and the first explicitly approved live test. Code availability alone does not establish a connected plugin or successful live scheduling.
 
-The separate private Sites client has a narrower [Facebook Scheduler Bridge contract and setup](docs/FACEBOOK_SCHEDULER_BRIDGE.md): the optional `MCP_BRIDGE_CLIENT_ID` restricts its verified token to reads, draft creation and dry-run scheduling, with no protected REST access.
+The separate private Sites client has a narrower [Facebook Scheduler Bridge contract and setup](docs/FACEBOOK_SCHEDULER_BRIDGE.md): `MCP_BRIDGE_CLIENT_ID` restricts its verified token to reads, draft creation and scheduling, with no protected REST access. Scheduling defaults to dry run. Explicit live scheduling additionally requires `MCP_BRIDGE_ALLOW_LIVE_SCHEDULING=true` and both existing publishing switches.
 
 ## Current architecture
 

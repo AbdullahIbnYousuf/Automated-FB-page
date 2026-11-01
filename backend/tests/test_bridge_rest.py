@@ -5,7 +5,7 @@ import jwt
 import pytest
 from sqlalchemy import func, select
 
-from app.config import get_settings
+from app.config import PublishMode, get_settings
 from app.database import get_session_factory
 from app.models.post import Post
 from tests.helpers import create_post
@@ -32,6 +32,7 @@ def provider(monkeypatch):
     return calls
 
 
+@pytest.mark.parametrize("live_enabled", [False, True])
 @pytest.mark.parametrize("method,path", [
     ("GET", "/api/system/status"),
     ("GET", "/api/facebook/status"),
@@ -44,8 +45,13 @@ def provider(monkeypatch):
     ("GET", "/api/media/posts/00000000-0000-4000-8000-000000000001.png"),
 ])
 def test_bridge_denied_on_every_operational_rest_route(
-    unauthenticated_client, provider, fake_media, method, path,
+    unauthenticated_client, provider, fake_media, monkeypatch, method, path, live_enabled,
 ):
+    if live_enabled:
+        settings = get_settings()
+        monkeypatch.setattr(settings, "mcp_bridge_allow_live_scheduling", True)
+        monkeypatch.setattr(settings, "automation_enabled", True)
+        monkeypatch.setattr(settings, "publish_mode", PublishMode.FACEBOOK_SCHEDULE)
     access_token = rest_token("bridge-client")
     response = unauthenticated_client.request(
         method, path, headers={"Authorization": f"Bearer {access_token}"},
@@ -64,6 +70,7 @@ def test_dashboard_and_other_clients_keep_rest_workflow(unauthenticated_client, 
     status = unauthenticated_client.get("/api/system/status")
     assert status.status_code == 200
     assert status.json()["bridge_client_restricted"] is False
+    assert status.json()["bridge_live_scheduling_enabled"] is False
     post = create_post(unauthenticated_client)
     assert post.status_code == 201
     post_id = post.json()["id"]
@@ -88,6 +95,20 @@ def test_provider_rejection_precedes_bridge_claim_inspection(unauthenticated_cli
     )
     assert response.status_code == 401
     assert response.json()["error"]["code"] == "AUTH_REQUIRED"
+
+
+def test_rest_status_never_claims_bridge_live_capability(unauthenticated_client, provider, monkeypatch):
+    settings = get_settings()
+    monkeypatch.setattr(settings, "mcp_bridge_allow_live_scheduling", True)
+    monkeypatch.setattr(settings, "automation_enabled", True)
+    monkeypatch.setattr(settings, "publish_mode", PublishMode.FACEBOOK_SCHEDULE)
+    response = unauthenticated_client.get(
+        "/api/system/status", headers={"Authorization": f"Bearer {rest_token()}"},
+    )
+    assert response.status_code == 200
+    assert response.json()["publishing_enabled"] is True
+    assert response.json()["bridge_client_restricted"] is False
+    assert response.json()["bridge_live_scheduling_enabled"] is False
 
 
 def test_wrong_operator_is_still_denied_with_bridge_configured(unauthenticated_client, monkeypatch):

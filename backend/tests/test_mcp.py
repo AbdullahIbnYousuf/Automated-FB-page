@@ -505,6 +505,7 @@ def test_other_mcp_client_retains_combined_creation_and_live_mode(mcp_client, mo
 
     settings = get_settings()
     monkeypatch.setattr(settings, "mcp_bridge_client_id", "different-bridge-client")
+    monkeypatch.setattr(settings, "mcp_bridge_allow_live_scheduling", True)
     monkeypatch.setattr(settings, "automation_enabled", True)
     monkeypatch.setattr(settings, "publish_mode", PublishMode.FACEBOOK_SCHEDULE)
     monkeypatch.setattr(settings, "facebook_page_id", "123456")
