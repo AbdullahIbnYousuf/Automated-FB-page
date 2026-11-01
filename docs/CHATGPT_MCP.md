@@ -105,6 +105,10 @@ ChatGPT callbacks or the native client's narrowly validated
 `http://127.0.0.1:<port>/callback[/<nonce>]` callback. It never accepts a
 model/user-supplied redirect. Supabase validates the exact registered URI;
 the backend verifies the operator before the frontend loads or decides consent.
+The one additional private Sites callback is
+`https://facebook-scheduler-bridge.sassypear13.chatgpt.site/oauth/callback`.
+Its dedicated OAuth client has a narrower server-enforced boundary described in
+[Facebook Scheduler Bridge support](FACEBOOK_SCHEDULER_BRIDGE.md).
 OAuth PKCE/state and backend JWT checks remain mandatory.
 
 ### Existing Ubuntu desktop installation

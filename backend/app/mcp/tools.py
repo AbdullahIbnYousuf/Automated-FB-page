@@ -102,12 +102,19 @@ class SchedulerTools:
         try:
             if name not in CONTRACTS:
                 raise AppError(code="UNKNOWN_TOOL", message="This tool is not available.", status_code=404)
+            bridge = bool(self.settings.mcp_bridge_client_id) and actor.client_id == self.settings.mcp_bridge_client_id
+            if bridge:
+                allowed = {"get_system_status", "test_facebook_connection", "list_posts", "get_post", "create_post", "schedule_post"}
+                if name not in allowed or (name == "schedule_post" and raw.get("mode", "dry_run") != "dry_run"):
+                    raise AppError(code="BRIDGE_ACTION_FORBIDDEN", message="This bridge client permits reads, draft creation and dry-run scheduling only.", status_code=403)
             args = CONTRACTS[name][0].model_validate(raw)
             with get_session_factory(self.settings.require_database_url())() as session:
                 if isinstance(args, CreatePostInput):
                     output = await self._create(session, actor.subject, name, args)
                 else:
                     data = await self._execute(session, name, args)
+                    if name == "get_system_status":
+                        data = data.model_copy(update={"bridge_client_restricted": bridge})
                     output = ToolOutput[CONTRACTS[name][1]](ok=True, data=data)
                 return mcp_result(output)
         except ValidationError:

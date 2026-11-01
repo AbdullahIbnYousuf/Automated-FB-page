@@ -3,6 +3,8 @@ import type { OAuthAuthorizationDetails, OAuthRedirect, SupabaseClient } from "@
 type ConsentProvider = Pick<SupabaseClient["auth"]["oauth"], "getAuthorizationDetails" | "approveAuthorization" | "denyAuthorization">;
 type VerifyOperator = () => Promise<unknown>;
 
+const BRIDGE_CALLBACK = "https://facebook-scheduler-bridge.sassypear13.chatgpt.site/oauth/callback";
+
 // Only call with a redirect returned by Supabase after operator verification.
 // Supabase binds it to the client's exact registered URI; PKCE/state are enforced
 // by the OAuth client. Native Codex uses an ephemeral numeric loopback listener.
@@ -10,10 +12,13 @@ export function oauthRedirect(value: string): string {
   const url = new URL(value);
   const web = url.protocol === "https:" && url.hostname === "chatgpt.com" && !url.port
     && (url.pathname.startsWith("/connector/oauth/") || url.pathname === "/connector_platform_oauth_redirect");
+  // Compare the literal callback before response parameters: URL parsing alone
+  // normalizes dot segments, backslashes, default ports and control characters.
+  const bridge = value.split("?", 1)[0] === BRIDGE_CALLBACK && !value.includes("#");
   const native = value.startsWith("http://127.0.0.1:") && url.protocol === "http:"
     && url.hostname === "127.0.0.1" && Number(url.port) >= 1024 && Number(url.port) <= 65535
     && /^\/callback(?:\/[A-Za-z0-9_-]{8,128})?$/.test(url.pathname);
-  if (url.username || url.password || url.hash || !(web || native)) {
+  if (url.username || url.password || url.hash || !(web || native || bridge)) {
     throw new Error("This connection must return to ChatGPT or its native OAuth callback. Start it again from the private plugin.");
   }
   return url.href;

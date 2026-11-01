@@ -138,3 +138,80 @@ test("password setup retains only the consent ID and strips recovery parameters"
   assert.equal(passwordSetupReturnUrl("/oauth/consent", `?authorization_id=${id}&type=recovery&code=secret`), `/oauth/consent?authorization_id=${id}`);
   assert.equal(passwordSetupReturnUrl("/", "?type=recovery&code=secret"), "/");
 });
+
+
+test("bridge callback is exact and preserves existing redirect restrictions", () => {
+  const callback = "https://facebook-scheduler-bridge.sassypear13.chatgpt.site/oauth/callback";
+  assert.equal(oauthRedirect(callback + "?code=single-use&state=test"), callback + "?code=single-use&state=test");
+  for (const invalid of [
+    "http://facebook-scheduler-bridge.sassypear13.chatgpt.site/oauth/callback",
+    "https://facebook-scheduler-bridge.sassypear13.chatgpt.site.evil.example/oauth/callback",
+    "https://other.sassypear13.chatgpt.site/oauth/callback",
+    "https://facebook-scheduler-bridge.sassypear13.chatgpt.site/other",
+    callback + "/", callback + "#secret",
+    callback + "#", callback + "?code=test#",
+    "https://facebook-scheduler-bridge.sassypear13.chatgpt.site:444/oauth/callback",
+    "https://facebook-scheduler-bridge.sassypear13.chatgpt.site:443/oauth/callback",
+    "https://user:password@facebook-scheduler-bridge.sassypear13.chatgpt.site/oauth/callback",
+    "https://facebook-scheduler-bridge.sassypear13.chatgpt.site/oauth/other/../callback",
+    "https://facebook-scheduler-bridge.sassypear13.chatgpt.site/other/%2e%2e/oauth/callback",
+    "https://facebook-scheduler-bridge.sassypear13.chatgpt.site/oauth/%63allback",
+    "https://facebook-scheduler-bridge.sassypear13.chatgpt.site/oauth%2fcallback",
+    "https://facebook-scheduler-bridge.sassypear13.chatgpt.site\\oauth\\callback",
+    "//facebook-scheduler-bridge.sassypear13.chatgpt.site/oauth/callback",
+    " " + callback, callback + "\n", callback.replace("/oauth/", "/oau\tth/"),
+  ]) assert.throws(() => oauthRedirect(invalid));
+});
+
+test("bridge consent verifies the operator before details, approval and denial", async () => {
+  const callback = "https://facebook-scheduler-bridge.sassypear13.chatgpt.site/oauth/callback";
+  const calls = [];
+  const verify = async () => calls.push("verify");
+  const loaded = await loadConsent(id, verify, {
+    getAuthorizationDetails: async actualId => {
+      assert.equal(actualId, id);
+      calls.push("details");
+      return { data: { ...details, redirect_uri: callback } };
+    },
+  });
+  assert.equal(loaded.redirect_uri, callback);
+  for (const approve of [true, false]) {
+    const destination = callback + (approve ? "?code=one-use-code&state=test" : "?error=access_denied&state=test");
+    const decision = async (actualId, options) => {
+      assert.equal(actualId, id);
+      assert.equal(options.skipBrowserRedirect, true);
+      calls.push(approve ? "approve" : "deny");
+      return { data: { redirect_url: destination } };
+    };
+    assert.equal(await decideConsent(id, approve, verify, {
+      approveAuthorization: decision, denyAuthorization: decision,
+    }), destination);
+  }
+  assert.deepEqual(calls, ["verify", "details", "verify", "approve", "verify", "deny"]);
+});
+
+test("already granted bridge consent follows only the provider's validated callback", async () => {
+  const destination = "https://facebook-scheduler-bridge.sassypear13.chatgpt.site/oauth/callback?code=test&state=test";
+  const calls = [];
+  const result = await loadConsent(id, async () => calls.push("verify"), {
+    getAuthorizationDetails: async () => {
+      calls.push("details");
+      return { data: { redirect_url: destination } };
+    },
+  });
+  assert.deepEqual(calls, ["verify", "details"]);
+  assert.equal(result.redirect_url, destination);
+});
+
+test("consent refuses a provider-returned bridge callback lookalike at every stage", async () => {
+  const evil = "https://facebook-scheduler-bridge.sassypear13.chatgpt.site.evil.example/oauth/callback";
+  for (const data of [{ ...details, redirect_uri: evil }, { redirect_url: evil }]) {
+    await assert.rejects(loadConsent(id, async () => {}, { getAuthorizationDetails: async () => ({ data }) }));
+  }
+  for (const approve of [true, false]) {
+    const decision = async () => ({ data: { redirect_url: evil } });
+    await assert.rejects(decideConsent(id, approve, async () => {}, {
+      approveAuthorization: decision, denyAuthorization: decision,
+    }));
+  }
+});

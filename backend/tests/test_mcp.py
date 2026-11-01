@@ -169,7 +169,10 @@ def test_real_mode_is_never_silently_simulated(mcp_client):
     assert call(mcp_client, "list_posts")["data"]["total"] == 0
 
 
-def test_request_key_conflict_validation_and_pagination(mcp_client):
+@pytest.mark.parametrize("restricted", [False, True])
+def test_request_key_conflict_validation_and_pagination(mcp_client, monkeypatch, restricted):
+    if restricted:
+        monkeypatch.setattr(get_settings(), "mcp_bridge_client_id", "chatgpt-client")
     args = create_args()
     assert call(mcp_client, "create_post", args)["ok"]
     conflict = call(mcp_client, "create_post", {**args, "caption": "Different"})
@@ -181,7 +184,10 @@ def test_request_key_conflict_validation_and_pagination(mcp_client):
     assert call(mcp_client, "list_posts", {"status": "scheduled"})["data"]["total"] == 0
 
 
-def test_in_progress_request_does_not_create_second_post(mcp_client):
+@pytest.mark.parametrize("restricted", [False, True])
+def test_in_progress_request_does_not_create_second_post(mcp_client, monkeypatch, restricted):
+    if restricted:
+        monkeypatch.setattr(get_settings(), "mcp_bridge_client_id", "chatgpt-client")
     args = create_args()
     with get_session_factory(get_settings().require_database_url())() as session:
         mcp_host.tools._reserve(session, "operator-id", "create_post", CreatePostInput.model_validate(args))
@@ -258,7 +264,10 @@ def test_failed_image_downloads(monkeypatch, status, content, headers, code):
     assert error.value.code == code
 
 
-def test_concurrent_creation_has_one_post_and_image(mcp_client, fake_media):
+@pytest.mark.parametrize("restricted", [False, True])
+def test_concurrent_creation_has_one_post_and_image(mcp_client, fake_media, monkeypatch, restricted):
+    if restricted:
+        monkeypatch.setattr(get_settings(), "mcp_bridge_client_id", "chatgpt-client")
     args = create_args()
     with ThreadPoolExecutor(max_workers=2) as pool:
         futures = [pool.submit(call, mcp_client, "create_post", args) for _ in range(2)]
@@ -334,3 +343,177 @@ def test_current_protocol_tools_call_and_bad_origin(mcp_client):
     assert response.json()["result"]["structuredContent"]["ok"] is True
     bad = mcp_client.post("/mcp", headers={**headers, "Origin": "https://evil.example"}, json=body)
     assert bad.status_code == 403
+
+
+def test_bridge_client_restriction_preserves_original_client(mcp_client, monkeypatch):
+    settings = get_settings()
+    monkeypatch.setattr(settings, "mcp_bridge_client_id", "chatgpt-client")
+    assert call(mcp_client, "get_system_status")["data"]["bridge_client_restricted"] is True
+    for name, args in [
+        ("schedule_post", {"post_id": "unused", "mode": "facebook_schedule"}),
+        ("create_and_schedule_post", create_args("bridge-combined-forbidden")),
+        ("update_post", {"post_id": "unused", "caption": "forbidden"}),
+    ]:
+        assert call(mcp_client, name, args)["error"]["code"] == "BRIDGE_ACTION_FORBIDDEN"
+    post = call(mcp_client, "create_post", create_args("bridge-create-allowed"))["data"]
+    simulated = call(mcp_client, "schedule_post", {"post_id": post["id"], "mode": "dry_run"})
+    assert simulated["data"]["simulated"] is True
+    assert simulated["data"]["external_request_made"] is False
+    monkeypatch.setattr(settings, "mcp_bridge_client_id", "different-client")
+    assert call(mcp_client, "get_system_status")["data"]["bridge_client_restricted"] is False
+    assert call(mcp_client, "update_post", {"post_id": post["id"], "caption": "original operator still allowed"})["ok"] is True
+
+
+@pytest.mark.parametrize("bridge_id,caller_id,restricted", [
+    (None, "bridge-client", False),
+    ("", "bridge-client", False),
+    ("bridge-client", "bridge-client", True),
+    ("bridge-client", "chatgpt-client", False),
+    ("bridge-client", "bridge-client-other", False),
+])
+def test_bridge_status_uses_only_verified_client_identity(
+    mcp_client, signing_key, monkeypatch, bridge_id, caller_id, restricted,
+):
+    monkeypatch.setattr(get_settings(), "mcp_bridge_client_id", bridge_id)
+    mcp_client.headers["Authorization"] = f"Bearer {token(signing_key, client_id=caller_id)}"
+    # A caller-supplied header cannot select a different OAuth identity.
+    mcp_client.headers["X-Client-Id"] = "bridge-client"
+    status = call(mcp_client, "get_system_status")
+    assert status["data"]["bridge_client_restricted"] is restricted
+
+
+def test_forged_bridge_identity_is_not_authenticated(mcp_client, monkeypatch):
+    monkeypatch.setattr(get_settings(), "mcp_bridge_client_id", "bridge-client")
+    forged = token(ec.generate_private_key(ec.SECP256R1()), client_id="bridge-client")
+    mcp_client.headers["Authorization"] = f"Bearer {forged}"
+    assert rpc(mcp_client, "tools/call", {"name": "get_system_status"}).status_code == 401
+
+
+def test_bridge_all_allowed_tools_and_replays_never_publish(mcp_client, fake_media, monkeypatch):
+    from app.integrations.facebook.client import FacebookClient
+    from app.integrations.facebook.schemas import FacebookPageIdentity
+
+    settings = get_settings()
+    monkeypatch.setattr(settings, "mcp_bridge_client_id", "chatgpt-client")
+    # Exercise the restriction even if an operator enables live mode elsewhere.
+    monkeypatch.setattr(settings, "automation_enabled", True)
+    monkeypatch.setattr(settings, "publish_mode", PublishMode.FACEBOOK_SCHEDULE)
+    monkeypatch.setattr(settings, "facebook_page_id", "123456")
+    monkeypatch.setattr(settings, "facebook_page_access_token", SecretStr("fixture-page-token"))
+    reads, writes, downloads = [], [], []
+
+    async def page_read(self):
+        reads.append(True)
+        return FacebookPageIdentity(id="123456", name="Test Page")
+
+    async def forbidden_write(self, **kwargs):
+        writes.append(True)
+        raise AssertionError("Bridge must not call Meta publishing")
+
+    original_download = mcp_host.tools.downloader.download
+
+    async def download(file):
+        downloads.append(True)
+        return await original_download(file)
+
+    monkeypatch.setattr(FacebookClient, "get_page_identity", page_read)
+    monkeypatch.setattr(FacebookClient, "schedule_page_photo", forbidden_write)
+    monkeypatch.setattr(mcp_host.tools.downloader, "download", download)
+    assert call(mcp_client, "get_system_status")["data"]["bridge_client_restricted"] is True
+    connection = call(mcp_client, "test_facebook_connection")
+    assert connection["data"]["connected"] is True
+    assert reads == [True]
+    args = create_args("bridge-durable-request-001")
+    created = call(mcp_client, "create_post", args)
+    assert created["ok"] and created["data"]["status"] == "draft"
+    post_id = created["data"]["id"]
+    replay = call(mcp_client, "create_post", {
+        **args, "image": {**args["image"], "download_url": "https://files.oaiusercontent.com/new-url"},
+    })
+    assert replay["replayed"] is True
+    assert replay["data"]["id"] == post_id
+    assert downloads == [True] and len(fake_media.objects) == 1
+    conflict = call(mcp_client, "create_post", {**args, "caption": "Changed content"})
+    assert conflict["error"]["code"] == "REQUEST_KEY_CONFLICT"
+    assert call(mcp_client, "list_posts")["data"]["total"] == 1
+    for mode in ({}, {"mode": "dry_run"}):
+        result = call(mcp_client, "schedule_post", {"post_id": post_id, **mode})
+        assert result["ok"]
+        assert result["data"]["simulated"] is True
+        assert result["data"]["external_request_made"] is False
+        assert result["data"]["facebook_object_id"] is None
+    post = call(mcp_client, "get_post", {"post_id": post_id})["data"]
+    assert post["status"] == "ready" and post["facebook_object_id"] is None
+    assert len(post["attempts"]) == 2
+    assert all(not attempt["external_request_made"] for attempt in post["attempts"])
+    assert writes == []
+
+
+@pytest.mark.parametrize("name,args", [
+    ("schedule_post", {"post_id": "unused", "mode": "facebook_schedule"}),
+    ("update_post", {"post_id": "unused", "caption": "forbidden"}),
+    ("create_and_schedule_post", {"mode": "dry_run"}),
+    ("create_and_schedule_post", {"mode": "facebook_schedule"}),
+    ("create_and_schedule_post", {}),
+])
+def test_bridge_forbidden_actions_stop_before_domain_side_effects(mcp_client, monkeypatch, name, args):
+    monkeypatch.setattr(get_settings(), "mcp_bridge_client_id", "chatgpt-client")
+    monkeypatch.setattr(get_settings(), "automation_enabled", True)
+    monkeypatch.setattr(get_settings(), "publish_mode", PublishMode.FACEBOOK_SCHEDULE)
+
+    def forbidden(*args, **kwargs):
+        raise AssertionError("Denied bridge action reached the domain service")
+
+    monkeypatch.setattr(mcp_host.tools, "_execute", forbidden)
+    monkeypatch.setattr(mcp_host.tools, "_reserve", forbidden)
+    result = call(mcp_client, name, args)
+    assert result["error"]["code"] == "BRIDGE_ACTION_FORBIDDEN"
+
+
+def test_other_mcp_client_retains_combined_creation_and_live_mode(mcp_client, monkeypatch):
+    from app.integrations.facebook.client import FacebookClient
+    from app.integrations.facebook.schemas import FacebookScheduledPhoto
+
+    settings = get_settings()
+    monkeypatch.setattr(settings, "mcp_bridge_client_id", "different-bridge-client")
+    monkeypatch.setattr(settings, "automation_enabled", True)
+    monkeypatch.setattr(settings, "publish_mode", PublishMode.FACEBOOK_SCHEDULE)
+    monkeypatch.setattr(settings, "facebook_page_id", "123456")
+    monkeypatch.setattr(settings, "facebook_page_access_token", SecretStr("fixture-page-token"))
+    writes = []
+
+    async def accepted(self, **kwargs):
+        writes.append(True)
+        return FacebookScheduledPhoto(id="fixture-photo", post_id="fixture-page_post")
+
+    monkeypatch.setattr(FacebookClient, "schedule_page_photo", accepted)
+    result = call(mcp_client, "create_and_schedule_post", {**create_args(), "mode": "facebook_schedule"})
+    assert result["ok"]
+    assert result["data"]["schedule"]["simulated"] is False
+    assert writes == [True]
+
+
+def test_bridge_rest_denied_after_provider_verification(monkeypatch):
+    from app.services.auth_service import AuthService
+    from app.config import Settings
+    settings = Settings(supabase_url="https://example.supabase.co", supabase_publishable_key=SecretStr("public-key"), operator_email="operator@example.com", mcp_bridge_client_id="bridge-client")
+    verified_tokens = []
+    for name in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"):
+        monkeypatch.delenv(name, raising=False)
+
+    async def get(self, url, **kwargs):
+        verified_tokens.append(kwargs["headers"]["Authorization"])
+        return httpx.Response(200, json={"id": "operator-id", "email": "operator@example.com"})
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", get)
+    bridge_token = jwt.encode({"client_id": "bridge-client"}, "fixture-only-key-at-least-32-bytes-long", algorithm="HS256")
+    ordinary_token = jwt.encode({"client_id": "original-client"}, "fixture-only-key-at-least-32-bytes-long", algorithm="HS256")
+
+    async def verify():
+        with pytest.raises(AppError) as error:
+            await AuthService(settings).authenticate(bridge_token)
+        assert error.value.code == "BRIDGE_REST_FORBIDDEN"
+        assert (await AuthService(settings).authenticate(ordinary_token)).id == "operator-id"
+        assert len(verified_tokens) == 2
+
+    anyio.run(verify)

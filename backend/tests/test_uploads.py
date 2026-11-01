@@ -10,7 +10,7 @@ from app.dependencies import get_media_service
 from app.main import app
 from app.services.errors import AppError
 from tests.conftest import InMemoryMediaService
-from tests.helpers import create_post, image_bytes
+from tests.helpers import corrupt_image_bytes, create_post, image_bytes
 
 
 @pytest.mark.parametrize(
@@ -120,3 +120,23 @@ def test_storage_error_is_safely_reported(client: TestClient) -> None:
         }
     }
     assert "test-secret-key" not in response.text
+
+
+def test_jpeg_with_intact_header_but_truncated_pixels_is_rejected(client):
+    content = image_bytes("JPEG")[:-10]
+    response = create_post(client, filename="truncated.jpg", mime_type="image/jpeg", content=content)
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "INVALID_IMAGE"
+
+
+@pytest.mark.parametrize("case", [
+    "jpeg-pixels", "png-ending-1", "png-ending-4", "png-ending-8",
+    "png-pixels", "apng-later-frame",
+])
+def test_corrupt_images_are_rejected_before_private_storage(client, fake_media, case):
+    content, mime, filename = corrupt_image_bytes(case)
+    response = create_post(client, filename=filename, mime_type=mime, content=content)
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "INVALID_IMAGE"
+    assert not fake_media.objects
+    assert client.get("/api/posts").json()["total"] == 0

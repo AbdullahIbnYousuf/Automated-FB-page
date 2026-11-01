@@ -3,6 +3,7 @@
 from dataclasses import dataclass
 
 import httpx
+import jwt
 
 from app.config import Settings
 from app.services.errors import AppError
@@ -51,6 +52,16 @@ class AuthService:
             email = str(payload["email"]).strip().lower()
         except (KeyError, TypeError, ValueError) as exc:
             raise self._unauthorized() from exc
+
+        if self.settings.mcp_bridge_client_id:
+            # Supabase /user above has already authenticated the exact Bearer token.
+            # Read its client claim only to DENY bridge credentials on every REST route.
+            try:
+                claims = jwt.decode(access_token, options={"verify_signature": False})
+            except jwt.PyJWTError:
+                raise self._unauthorized()
+            if claims.get("client_id") == self.settings.mcp_bridge_client_id:
+                raise AppError(code="BRIDGE_REST_FORBIDDEN", message="Use the restricted MCP bridge endpoint.", status_code=403)
 
         allowed_email = (self.settings.operator_email or "").strip().lower()
         if not allowed_email or email != allowed_email:

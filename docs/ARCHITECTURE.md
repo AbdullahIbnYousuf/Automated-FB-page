@@ -137,7 +137,7 @@ The backend validates the entire upload before Storage receives it:
 - one JPEG/PNG only
 - MIME, extension, and decoded content must agree
 - non-empty and at most 5 MiB
-- decoded dimensions below the configured pixel ceiling
+- full pixel decoding, complete PNG ending, and a decoded pixel budget across all frames
 - UUID object name under `posts/`
 - no overwrite and no client-controlled path
 
@@ -253,3 +253,18 @@ There are no recovery workers or automatic external-write retries. A short
 cancellation shield permits normal disconnects to finish outcome persistence;
 process death can still require inspection. Both MCP and REST use the existing
 atomic post claim, and draft updates lock the row against concurrent scheduling.
+
+## Private Sites bridge (pending deployment)
+
+Facebook Scheduler Bridge is an additional private client, not a scheduler.
+It calls this backend's existing MCP tools. The configured MCP_BRIDGE_CLIENT_ID
+is restricted to status, Page read, list/get, draft creation and explicit dry_run
+scheduling. Other tools and all REST access using that client token are denied.
+The dashboard and existing ChatGPT client grants are unchanged. The Sites
+credential vault contains encrypted delegated tokens and one-use PKCE state only;
+all posts, attempts, images and Meta credentials remain in this backend/Supabase.
+The existing consent UI permits only this exact additional callback:
+https://facebook-scheduler-bridge.sassypear13.chatgpt.site/oauth/callback
+Existing callback and operator verification restrictions remain enforced.
+See [bridge contract and remaining setup](FACEBOOK_SCHEDULER_BRIDGE.md) for the
+caller-specific status flag, exact callback validation and local test evidence.

@@ -24,6 +24,7 @@ class SystemStatusResponse(BaseModel):
     graph_api_version: str
     facebook: FacebookConfigurationStatus
     current_time_utc: datetime
+    bridge_client_restricted: bool = False
 
 
 def system_status(settings: Settings) -> SystemStatusResponse:
