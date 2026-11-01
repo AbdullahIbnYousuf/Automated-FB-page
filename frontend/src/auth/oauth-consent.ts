@@ -10,10 +10,12 @@ export function oauthRedirect(value: string): string {
   const url = new URL(value);
   const web = url.protocol === "https:" && url.hostname === "chatgpt.com" && !url.port
     && (url.pathname.startsWith("/connector/oauth/") || url.pathname === "/connector_platform_oauth_redirect");
+  const bridge = url.origin === "https://facebook-scheduler-bridge.sassypear13.chatgpt.site"
+    && url.pathname === "/oauth/callback";
   const native = value.startsWith("http://127.0.0.1:") && url.protocol === "http:"
     && url.hostname === "127.0.0.1" && Number(url.port) >= 1024 && Number(url.port) <= 65535
     && /^\/callback(?:\/[A-Za-z0-9_-]{8,128})?$/.test(url.pathname);
-  if (url.username || url.password || url.hash || !(web || native)) {
+  if (url.username || url.password || url.hash || !(web || native || bridge)) {
     throw new Error("This connection must return to ChatGPT or its native OAuth callback. Start it again from the private plugin.");
   }
   return url.href;

@@ -334,3 +334,48 @@ def test_current_protocol_tools_call_and_bad_origin(mcp_client):
     assert response.json()["result"]["structuredContent"]["ok"] is True
     bad = mcp_client.post("/mcp", headers={**headers, "Origin": "https://evil.example"}, json=body)
     assert bad.status_code == 403
+
+
+def test_bridge_client_restriction_preserves_original_client(mcp_client, monkeypatch):
+    settings = get_settings()
+    monkeypatch.setattr(settings, "mcp_bridge_client_id", "chatgpt-client")
+    assert call(mcp_client, "get_system_status")["data"]["bridge_client_restricted"] is True
+    for name, args in [
+        ("schedule_post", {"post_id": "unused", "mode": "facebook_schedule"}),
+        ("create_and_schedule_post", create_args("bridge-combined-forbidden")),
+        ("update_post", {"post_id": "unused", "caption": "forbidden"}),
+    ]:
+        assert call(mcp_client, name, args)["error"]["code"] == "BRIDGE_ACTION_FORBIDDEN"
+    post = call(mcp_client, "create_post", create_args("bridge-create-allowed"))["data"]
+    simulated = call(mcp_client, "schedule_post", {"post_id": post["id"], "mode": "dry_run"})
+    assert simulated["data"]["simulated"] is True
+    assert simulated["data"]["external_request_made"] is False
+    monkeypatch.setattr(settings, "mcp_bridge_client_id", "different-client")
+    assert call(mcp_client, "get_system_status")["data"]["bridge_client_restricted"] is False
+    assert call(mcp_client, "update_post", {"post_id": post["id"], "caption": "original operator still allowed"})["ok"] is True
+
+
+def test_bridge_rest_denied_after_provider_verification(monkeypatch):
+    from app.services.auth_service import AuthService
+    from app.config import Settings
+    settings = Settings(supabase_url="https://example.supabase.co", supabase_publishable_key=SecretStr("public-key"), operator_email="operator@example.com", mcp_bridge_client_id="bridge-client")
+    verified_tokens = []
+    for name in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"):
+        monkeypatch.delenv(name, raising=False)
+
+    async def get(self, url, **kwargs):
+        verified_tokens.append(kwargs["headers"]["Authorization"])
+        return httpx.Response(200, json={"id": "operator-id", "email": "operator@example.com"})
+
+    monkeypatch.setattr(httpx.AsyncClient, "get", get)
+    bridge_token = jwt.encode({"client_id": "bridge-client"}, "fixture-only-key-at-least-32-bytes-long", algorithm="HS256")
+    ordinary_token = jwt.encode({"client_id": "original-client"}, "fixture-only-key-at-least-32-bytes-long", algorithm="HS256")
+
+    async def verify():
+        with pytest.raises(AppError) as error:
+            await AuthService(settings).authenticate(bridge_token)
+        assert error.value.code == "BRIDGE_REST_FORBIDDEN"
+        assert (await AuthService(settings).authenticate(ordinary_token)).id == "operator-id"
+        assert len(verified_tokens) == 2
+
+    anyio.run(verify)

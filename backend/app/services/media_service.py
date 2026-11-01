@@ -145,6 +145,9 @@ class MediaService:
                         status_code=422,
                     )
                 image.verify()
+            # JPEG verify() alone does not decode the pixel stream.
+            with Image.open(BytesIO(stored.content)) as decoded:
+                decoded.load()
         except AppError:
             raise
         except (Image.DecompressionBombError, UnidentifiedImageError, OSError) as exc:
@@ -234,6 +237,8 @@ class MediaService:
                         status_code=422,
                     )
                 image.verify()
+            with Image.open(BytesIO(content)) as decoded:
+                decoded.load()
         except AppError:
             raise
         except (Image.DecompressionBombError, UnidentifiedImageError, OSError) as exc:

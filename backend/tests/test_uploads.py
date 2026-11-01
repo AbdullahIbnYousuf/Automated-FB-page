@@ -120,3 +120,10 @@ def test_storage_error_is_safely_reported(client: TestClient) -> None:
         }
     }
     assert "test-secret-key" not in response.text
+
+
+def test_jpeg_with_intact_header_but_truncated_pixels_is_rejected(client):
+    content = image_bytes("JPEG")[:-10]
+    response = create_post(client, filename="truncated.jpg", mime_type="image/jpeg", content=content)
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "INVALID_IMAGE"

@@ -138,3 +138,16 @@ test("password setup retains only the consent ID and strips recovery parameters"
   assert.equal(passwordSetupReturnUrl("/oauth/consent", `?authorization_id=${id}&type=recovery&code=secret`), `/oauth/consent?authorization_id=${id}`);
   assert.equal(passwordSetupReturnUrl("/", "?type=recovery&code=secret"), "/");
 });
+
+
+test("bridge callback is exact and preserves existing redirect restrictions", () => {
+  const callback = "https://facebook-scheduler-bridge.sassypear13.chatgpt.site/oauth/callback";
+  assert.equal(oauthRedirect(callback + "?code=single-use&state=test"), callback + "?code=single-use&state=test");
+  for (const invalid of [
+    "http://facebook-scheduler-bridge.sassypear13.chatgpt.site/oauth/callback",
+    "https://facebook-scheduler-bridge.sassypear13.chatgpt.site.evil.example/oauth/callback",
+    "https://other.sassypear13.chatgpt.site/oauth/callback",
+    "https://facebook-scheduler-bridge.sassypear13.chatgpt.site/other",
+    callback + "/", callback + "#secret",
+  ]) assert.throws(() => oauthRedirect(invalid));
+});
