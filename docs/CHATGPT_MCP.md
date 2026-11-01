@@ -143,6 +143,11 @@ If client transfer is unavailable, save the image through the dashboard, then
 use `list_posts`/`get_post` and `schedule_post` for that existing ID. Record uploaded
 and generated image verification separately; mock downloads prove neither.
 
+For `FILE_URL_NOT_ALLOWED`, use the [image transfer diagnosis and acceptance
+guide](CHATGPT_IMAGE_TRANSFER.md). The error also covers parsing and DNS failures;
+do not broaden `MCP_FILE_ALLOWED_HOSTS` without observing and verifying the exact
+delivery hostname and failing check.
+
 Use a unique `request_key` for one intended creation and reuse it on retries.
 The database reserves operator + tool + key before side effects and records a
 fingerprint, post association and safe result. Changing the signed download URL
