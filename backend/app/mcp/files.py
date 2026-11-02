@@ -20,6 +20,18 @@ from app.services.errors import AppError
 
 
 logger = logging.getLogger(__name__)
+DNS_LABEL = re.compile(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?")
+
+
+def valid_file_hostname(host: str) -> bool:
+    """Accept canonical ASCII DNS labels (or an explicitly allowlisted IP)."""
+    if not host or len(host) > 253 or not host.isascii() or "%" in host:
+        return False
+    try:
+        ipaddress.ip_address(host)
+        return True
+    except ValueError:
+        return all(DNS_LABEL.fullmatch(label) for label in host.split("."))
 
 
 def diagnostic_hostname(host: str | None) -> str | None:
@@ -69,6 +81,10 @@ class ChatGPTFileDownloader:
 
     async def _validate_url(self, value: str, *, redirect_hop: int = 0) -> None:
         host = None
+        # urlsplit silently removes some whitespace/control characters. Do not
+        # permit that normalization to turn malformed input into an allowed URL.
+        if any(ord(char) <= 32 or ord(char) == 127 for char in value):
+            raise self._url_rejected("url_parse_error", None, redirect_hop)
         try:
             url = urlsplit(value)
             host = (url.hostname or "").lower()
@@ -84,7 +100,13 @@ class ChatGPTFileDownloader:
         if port not in {None, 443}:
             raise self._url_rejected("port_not_allowed", host, redirect_hop)
         allowed = {h.strip().lower() for h in self.settings.mcp_file_allowed_hosts.split(",") if h.strip()}
-        if not host or host not in allowed or "*" in host:
+        # Only this first-party suffix has been reviewed. Keep this check
+        # fail-closed even if Settings construction is bypassed by a caller.
+        regional = (
+            self.settings.mcp_file_allowed_domain_suffixes == "oaiusercontent.com"
+            and host.endswith(".oaiusercontent.com")
+        )
+        if not url.netloc.isascii() or not valid_file_hostname(host) or not (host in allowed or regional):
             raise self._url_rejected("host_not_allowed", host, redirect_hop)
         # Even an explicitly configured host must never resolve to a private destination.
         try:

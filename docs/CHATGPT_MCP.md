@@ -41,6 +41,7 @@ OpenAI compatibility metadata, and enforced independently on every HTTP request.
    ```env
    MCP_RESOURCE_URL=https://facebook-page-operations-api.onrender.com/mcp
    MCP_FILE_ALLOWED_HOSTS=files.oaiusercontent.com
+   MCP_FILE_ALLOWED_DOMAIN_SUFFIXES=
    MCP_FILE_TIMEOUT_SECONDS=20
    ```
 
@@ -129,16 +130,21 @@ Its schema declares all four string properties: required `download_url` and
 `file_id`, optional `mime_type` and `file_name`. ChatGPT supplies the temporary
 download location; a sandbox path or invented URL is insufficient.
 
-The backend downloads bytes without application credentials, permits only exact
-configured HTTPS hosts with public DNS answers, checks each redirect, bounds
+The backend downloads bytes without application credentials, permits exact
+configured HTTPS hosts and optionally valid subdomains of the reviewed
+`oaiusercontent.com` domain, requires public DNS answers, checks each redirect, bounds
 time and size, and uses the same JPEG/PNG validation/private Storage as the GUI.
 Signed URLs are not stored, returned or logged. Missing optional metadata is
 derived from decoded bytes. Original-file metadata, when supplied, must agree.
 
-If a legitimate ChatGPT client uses another file host, verify the actual provider
-host without revealing the signed query and add that exact hostname to
-`MCP_FILE_ALLOWED_HOSTS`. Never allow arbitrary domains or wildcard cloud-storage
-domains. An expired URL must be replaced by reattaching/selecting the image.
+`MCP_FILE_ALLOWED_DOMAIN_SUFFIXES` defaults empty. After separate review,
+`oaiusercontent.com` is its only supported nonempty value. Matching requires a
+valid ASCII DNS hostname ending with `.oaiusercontent.com`; it does not grant
+the bare apex, lookalikes or malformed labels. Unsupported suffix settings fail
+startup validation. Azure and other delivery hosts still need provenance review
+and an individual `MCP_FILE_ALLOWED_HOSTS` entry. Keep all existing exact entries.
+Never permit arbitrary domains or cloud-storage suffixes. An expired URL must
+be replaced by reattaching/selecting the image.
 If client transfer is unavailable, save the image through the dashboard, then
 use `list_posts`/`get_post` and `schedule_post` for that existing ID. Record uploaded
 and generated image verification separately; mock downloads prove neither.

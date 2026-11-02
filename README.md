@@ -6,6 +6,11 @@ The private **The Test Lab Operations** ChatGPT plugin exposes the same services
 
 The separate private Sites client has a narrower [Facebook Scheduler Bridge contract and setup](docs/FACEBOOK_SCHEDULER_BRIDGE.md): `MCP_BRIDGE_CLIENT_ID` restricts its verified token to reads, draft creation and scheduling, with no protected REST access. Scheduling defaults to dry run. Explicit live scheduling additionally requires `MCP_BRIDGE_ALLOW_LIVE_SCHEDULING=true` and both existing publishing switches.
 
+ChatGPT image delivery keeps the exact `MCP_FILE_ALLOWED_HOSTS` list. Optional
+`MCP_FILE_ALLOWED_DOMAIN_SUFFIXES` defaults empty and supports only reviewed
+`oaiusercontent.com` subdomains; Azure accounts remain individual exact entries.
+See [the host policy and proposed production configuration](docs/CHATGPT_IMAGE_TRANSFER.md).
+
 ## Current architecture
 
 ```text

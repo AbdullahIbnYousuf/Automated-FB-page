@@ -1,5 +1,91 @@
 # ChatGPT image transfer diagnosis
 
+## Regional host policy proposal — 2 November 2026
+
+This section describes a repository-only preparation. **Do not merge, deploy or
+change hosted configuration as part of this task.** The earlier hosted acceptance
+below remains historical evidence, not acceptance of this new suffix policy.
+
+Current `main` is `5a6c2d0d39945775af737ed0bda5fb1f9f0f0178`, also confirmed
+live by Render deployment `dep-dbk1a6rm8hqs738appj0`. The production Dashboard
+still contains all six exact hosts from the earlier rollout and no
+`MCP_FILE_ALLOWED_DOMAIN_SUFFIXES` setting. Only that non-secret allowlist was
+revealed; no credentials or signed URLs were read or printed.
+
+Fresh sanitized production events on 2 November independently confirm:
+
+| UTC timestamp | Category | Hostname | Redirect hop |
+| --- | --- | --- | --- |
+| 04:46:10Z | `host_not_allowed` | `oaisdmntprindiasocentral.blob.core.windows.net` | 0 |
+| 04:49:33Z | `host_not_allowed` | `oaisdmntprindiasocentral.blob.core.windows.net` | 0 |
+| 04:59:15Z | `host_not_allowed` | `sdmntprseasia.oaiusercontent.com` | 0 |
+
+The Azure account's delivery provenance is supported by the operator's reported
+ChatGPT transfer and the two matching authenticated-backend downloader events.
+DNS independently resolves the exact account through its Azure Storage aliases
+to `blob.hyd01prdstrz02a.trafficmanager.net`; that verifies Azure hosting, not an
+independent OpenAI ownership attestation. The cited OpenAI guidance does not
+name that storage account, and no signed download URL was inspected.
+Propose only that observed account as one additional exact host; never derive
+other account names from the regional naming pattern.
+
+[OpenAI's network guidance](https://help.openai.com/en/articles/9247338-network-recommendations-for-chatgpt-errors-on-web-and-apps)
+identifies `*.oaiusercontent.com` as an OpenAI/ChatGPT domain. The new optional
+`MCP_FILE_ALLOWED_DOMAIN_SUFFIXES` setting defaults to an empty string and
+supports only `oaiusercontent.com`. Unsupported values (including `com`,
+`windows.net`, `blob.core.windows.net` and `amazonaws.com`) fail configuration
+validation. Case/outer whitespace and duplicate reviewed entries normalize to
+the canonical value. The downloader also fails closed for unsupported suffix
+values if construction-time validation is bypassed.
+
+Host matching combines the existing exact entries with the optional suffix
+rule. Suffix matching requires a **valid subdomain** ending in
+`.oaiusercontent.com`, after checking ASCII DNS labels (1–63 characters, no
+empty labels, leading/trailing hyphens, underscores, wildcards, Unicode or encoded
+authority characters; total hostname at most 253 characters). The suffix alone
+does not grant the bare apex. Lookalikes such as `eviloaiusercontent.com`,
+`oaiusercontent.com.evil.example` and `files.oaiusercontent.com.evil.example`
+remain blocked. Exact entries remain exact; an Azure account entry never grants
+its siblings or children. Malformed hostnames remain invalid even if mistakenly
+listed exactly. Raw URL whitespace/control characters are rejected before
+`urlsplit` can silently normalize them.
+
+HTTPS, port 443/default only, userinfo/fragment rejection, all-address public DNS
+checks, validation of every redirect, bounded credential-free requests and image
+decoding remain mandatory for **both** matching paths. Durable request keys,
+client restrictions, scheduling gates, concurrency and unknown-outcome blocking
+are unchanged. Sanitized diagnostic fields and error codes remain unchanged.
+
+### Exact proposed production configuration, after separate review
+
+Retain the current six exact entries, append the single observed Azure account,
+and enable the reviewed first-party suffix with:
+
+```env
+MCP_FILE_ALLOWED_HOSTS=files.oaiusercontent.com,sdmntprnznorth.oaiusercontent.com,oaisdmntprnznorth.blob.core.windows.net,oaisdmntprcentralindia.blob.core.windows.net,sdmntprindiasocentral.oaiusercontent.com,sdmntprcentralindia.oaiusercontent.com,oaisdmntprindiasocentral.blob.core.windows.net
+MCP_FILE_ALLOWED_DOMAIN_SUFFIXES=oaiusercontent.com
+```
+
+These values are **proposed, not applied**. Repository examples retain the
+conservative exact-host default and empty suffix. The Blueprint omits the new
+setting, so the backend default applies; a later controlled rollout should
+preserve the existing hosted overrides. Do not alter publishing permissions,
+authentication, client ID, secrets, private Storage or the database.
+
+Local checks: **344 backend tests**, including **83 new policy regressions**;
+**15 frontend consent tests** and production build; Python compilation and
+dependency consistency; `git diff --check`. All passed. The tests use mocked
+downloads, isolated SQLite/private Storage and mocked Meta boundaries.
+
+Remaining acceptance after separately authorized merge/deploy/configuration:
+check health/authentication, transfer one fresh ChatGPT attachment, retrieve its
+private bytes and explicitly dry-run the created post. Require `simulated=true`,
+`external_request_made=false`, `facebook_object_id=null`. No production creation,
+dry-run, image-generation or Facebook publishing request was made during this
+preparation. Further Azure accounts still need individual delivery evidence and
+exact-host review. Expired/malformed URLs and private DNS remain rejected; the
+suffix policy does not fix those failures or authorize automatic retries.
+
 ## Generated-image investigation — 2 November 2026
 
 Inspected current main and the live backend at
