@@ -1,4 +1,114 @@
-# ChatGPT image transfer diagnosis — 1 November 2026
+# ChatGPT image transfer diagnosis
+
+## Generated-image investigation — 2 November 2026
+
+Inspected current main and the live backend at
+`c1370d1070a879a0948b0dccf6a343bd0a3f5f89`, plus the private Sites bridge
+source at `be415b37332d002836facd7067ea16ff7a0f8032` (version 4).
+The bridge declares the complete `openai/fileParams` object schema and forwards
+the image object unchanged to the backend's `create_post`. The backend accepts
+the same object for uploaded and generated images. This follows the
+[official file-input contract](https://developers.openai.com/plugins/reference).
+Bare file IDs and sandbox paths are not backend download URLs; do not invent
+URLs or add a separate OpenAI credential to resolve them.
+
+The two production rejection events at **02:09:20Z** and **02:15:53Z** on
+2 November both report exactly:
+
+```json
+{"rejection_category":"host_not_allowed","hostname":"oaisdmntprcentralindia.blob.core.windows.net","redirect_hop":0}
+```
+
+These align with the user's two reported generated-image failures. The backend
+received a parseable HTTPS URL; hostname validation rejected it before DNS or
+download. The error was not evidence of an unresolved file ID or DNS failure.
+Diagnostics deliberately omit file IDs, so they cannot independently associate
+each event with one of the two reported references. A public Azure DNS answer
+establishes the storage service, not an independent OpenAI ownership attestation;
+the provenance evidence is the reported ChatGPT transfer plus these events.
+
+The saved Render override contained the three previously verified exact hosts.
+After adding the observed Azure host, a fresh built-in generated-image test at
+**02:39:27Z** reached the backend with a different exact delivery hostname:
+`sdmntprindiasocentral.oaiusercontent.com`. Its sanitized diagnostic was also
+`host_not_allowed` at hop 0. This independently confirms that generated content
+is resolved into a downloadable file object; delivery can use distinct exact hosts.
+That test ended with a recorded rejection and a subsequent list still contained
+exactly four posts, so no pending/ambiguous creation was retried.
+
+A new test after that configuration became live at **02:42:51Z** reported
+`host_not_allowed` at hop 0 for `sdmntprcentralindia.oaiusercontent.com`.
+It also completed with rejection and no new post. Each new acceptance request
+was made only after verifying the previous rejection created no post; pending
+or ambiguous requests were never replayed with replacement keys.
+
+The final configuration-only fix appends those three observed exact hosts:
+
+```env
+MCP_FILE_ALLOWED_HOSTS=files.oaiusercontent.com,sdmntprnznorth.oaiusercontent.com,oaisdmntprnznorth.blob.core.windows.net,oaisdmntprcentralindia.blob.core.windows.net,sdmntprindiasocentral.oaiusercontent.com,sdmntprcentralindia.oaiusercontent.com
+```
+
+Do not add `*.blob.core.windows.net`, other Azure storage accounts, regional
+patterns, or a suffix-matching rule. No downloader, bridge runtime, database or
+Storage change is required. The repository/Blueprint keeps its conservative
+default; the explicit production override is managed on the existing Render
+service. A future Blueprint sync must preserve that override intentionally.
+Further regional delivery hosts require fresh sanitized evidence and review.
+
+Only `MCP_FILE_ALLOWED_HOSTS` changes. Preserve the live-capability settings
+authorized separately on 1 November: `AUTOMATION_ENABLED=true`,
+`PUBLISH_MODE=facebook_schedule`, `AUTH_REQUIRED=true`,
+`MCP_BRIDGE_ALLOW_LIVE_SCHEDULING=true`, and the existing `MCP_BRIDGE_CLIENT_ID`.
+File transfer/dry-run acceptance never authorizes a real Meta write.
+
+`tests/test_generated_image_transfer.py` covers the observed rejection before
+configuration, exact-host lookalike rejection, HTTPS/port/fragment restrictions,
+private/mixed DNS answers, redirect rejection, full malformed-image rejection,
+byte-for-byte private-storage persistence, retrieval, replay without redownload,
+and explicit dry-run with no Meta write even when live gates are enabled.
+
+Local checks: **261 backend tests**, including **26 new transfer regressions**;
+**15 frontend consent tests**; Python compilation and dependency consistency;
+frontend production build; **26 existing Sites bridge tests**, Worker build and
+artifact validation. All passed. Local HTTP, Storage and Meta operations are
+isolated mocks. No frontend or Sites runtime source change is needed.
+
+### Hosted acceptance
+
+The final configuration deployment `dep-dbjvhudg1s2s738sc910` became live at
+**02:45:51Z** on 2 November, using unchanged backend commit `c1370d1`.
+A newly generated built-in image (red paper sailboat, “TRANSFER TEST”) then
+passed `create_post` directly from its generated local file reference, without
+manual download/re-upload or user intervention. It created exactly one draft:
+
+- Post: `bf25739b-337a-4b77-9f4f-ec307cf73742`.
+- Created: **02:46:20Z**; retrieved through bridge `get_post` as `draft`.
+- Validated MIME: `image/png`; original generated filename retained.
+- Private dashboard image loaded at **1254×1254**, visually matching the generated
+  source. This confirms actual stored image retrieval, not just a file reference.
+- Explicit bridge dry-run succeeded at **02:47:19Z** with `simulated=true`,
+  `external_request_made=false`, `facebook_object_id=null`; one persisted attempt
+  and status `ready` on subsequent retrieval.
+- Post count increased **4 → 5**, with the existing four records unchanged.
+
+Byte-for-byte persistence is asserted by the isolated integration tests. Hosted
+verification checked successful transfer, authenticated image display, dimensions
+and visual match; it did not independently compare a production byte digest
+(the browser's asset export could not fetch the protected media).
+The two older conversation file IDs were not directly resolved in this Codex
+environment; the fresh built-in generated-image test establishes the supported
+transfer path. Future unobserved delivery hosts still fail closed.
+
+Live publishing/authentication gates and bridge restrictions remained unchanged.
+No real scheduling tool or Meta publishing request was called. Any real post
+still requires separate approval of its exact caption, image, Page and future
+local time. Unknown write outcomes remain blocked without automatic retries.
+
+### Historical diagnostic rollout — 1 November 2026
+
+The sections below record the earlier default-host investigation and its then
+pending acceptance steps. They do not describe current hosted publishing gates
+or the generated-image rejection confirmed above.
 
 ## What was observed
 
