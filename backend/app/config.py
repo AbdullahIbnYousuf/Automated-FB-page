@@ -4,7 +4,7 @@ from enum import StrEnum
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import SecretStr
+from pydantic import SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -58,10 +58,19 @@ class Settings(BaseSettings):
 
     mcp_resource_url: str = "https://facebook-page-operations-api.onrender.com/mcp"
     mcp_file_allowed_hosts: str = "files.oaiusercontent.com"
+    mcp_file_allowed_domain_suffixes: str = ""
     mcp_file_timeout_seconds: float = 20.0
     # Dedicated Sites OAuth client: restricted MCP actions; no REST access.
     mcp_bridge_client_id: str | None = None
     mcp_bridge_allow_live_scheduling: bool = False
+
+    @field_validator("mcp_file_allowed_domain_suffixes")
+    @classmethod
+    def reviewed_file_domain_suffixes(cls, value: str) -> str:
+        suffixes = {part.strip().lower() for part in value.split(",") if part.strip()}
+        if suffixes - {"oaiusercontent.com"}:
+            raise ValueError("MCP_FILE_ALLOWED_DOMAIN_SUFFIXES supports only oaiusercontent.com.")
+        return ",".join(sorted(suffixes))
 
     @property
     def mcp_issuer_url(self) -> str:

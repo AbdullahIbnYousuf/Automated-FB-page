@@ -223,7 +223,11 @@ Analytics, comments, scoring, AI generation, and additional platforms require ne
   the existing frontend. Passwords and privileged keys never enter conversation.
 - Signed ChatGPT download URLs are temporary credentials: never log, echo or
   persist them. File downloads use a separate client without application tokens,
-  exact verified HTTPS hosts, public DNS checks and strict time/size bounds.
+  exact verified HTTPS hosts (plus valid `oaiusercontent.com` subdomains only
+  when the reviewed optional suffix policy is enabled), public DNS checks and
+  strict time/size bounds. No cloud-storage suffix, wildcard, substring match,
+  malformed hostname or credential forwarding is permitted. Azure storage
+  accounts require individual exact-host review.
 - Both creation tools reserve durable request keys before side effects. Replays
   return recorded outcomes; unfinished keys require inspection, never takeover.
 - Tool metadata and workflow instructions require explicit approval of exact

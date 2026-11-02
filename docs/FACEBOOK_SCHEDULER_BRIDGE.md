@@ -126,16 +126,18 @@ Exact environment-variable names:
 | Optional backend bridge settings | `MCP_BRIDGE_CLIENT_ID`, `MCP_BRIDGE_ALLOW_LIVE_SCHEDULING` (default false) |
 | Safe defaults (intentional live override above) | `AUTOMATION_ENABLED=false`, `PUBLISH_MODE=dry_run`, `AUTH_REQUIRED=true`, `APP_TIMEZONE=Asia/Dhaka` |
 | Existing Supabase/operator settings, reused | `DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`, `SUPABASE_STORAGE_BUCKET`, `OPERATOR_EMAIL` |
-| Existing MCP resource/file settings | `MCP_RESOURCE_URL`, `MCP_FILE_ALLOWED_HOSTS`, `MCP_FILE_TIMEOUT_SECONDS` |
+| Existing MCP resource/file settings | `MCP_RESOURCE_URL`, `MCP_FILE_ALLOWED_HOSTS`, `MCP_FILE_ALLOWED_DOMAIN_SUFFIXES` (default empty), `MCP_FILE_TIMEOUT_SECONDS` |
 | Existing image limits | `MAX_UPLOAD_BYTES`, `MAX_IMAGE_PIXELS` |
 | Existing Meta configuration, reused | `FACEBOOK_GRAPH_API_VERSION`, `FACEBOOK_PAGE_ID`, `FACEBOOK_PAGE_ACCESS_TOKEN`, `FACEBOOK_REQUEST_TIMEOUT_SECONDS` |
 | Existing browser-safe frontend settings | `VITE_API_BASE_URL`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_PUBLISHABLE_KEY` |
 
 The canonical `MCP_RESOURCE_URL` remains
 `https://facebook-page-operations-api.onrender.com/mcp`. Existing exact file-host
-allowlisting and bounded credential-free HTTPS downloads still apply. If actual
-image transfer requires a different provider host, verify it separately before
-changing `MCP_FILE_ALLOWED_HOSTS`; do not broaden it to arbitrary image URLs.
+allowlisting and bounded credential-free HTTPS downloads still apply. Optional
+`MCP_FILE_ALLOWED_DOMAIN_SUFFIXES=oaiusercontent.com` permits only valid
+subdomains with a DNS-label boundary; no other suffix is supported. Azure accounts
+still need individual provenance review before adding an exact entry to
+`MCP_FILE_ALLOWED_HOSTS`. See [policy proposal and evidence](CHATGPT_IMAGE_TRANSFER.md).
 No new frontend environment variable or Supabase migration is needed.
 
 ## Local review evidence — 1 November 2026

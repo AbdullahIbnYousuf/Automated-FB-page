@@ -240,8 +240,12 @@ callbacks on ephemeral ports, in addition to the existing ChatGPT HTTPS callback
 The frontend never follows an arbitrary redirect supplied in a URL parameter.
 
 ChatGPT file objects supply a temporary URL and file ID. An isolated downloader
-accepts verified HTTPS file hosts only, rejects private DNS answers, checks
-redirects, and bounds time/bytes. No application credentials accompany downloads.
+accepts exact configured HTTPS file hosts and, only when explicitly enabled,
+valid subdomains of the reviewed `oaiusercontent.com` suffix. The suffix setting
+defaults empty, rejects every other domain, and does not include the bare apex.
+Azure accounts remain individually allowlisted. The downloader rejects malformed
+hostnames and private DNS answers, validates each redirect, and bounds time/bytes.
+No application credentials accompany downloads.
 Validated bytes enter the existing private Storage workflow; signed URLs are
 neither logged nor persisted. Uploaded/generated image acceptance is tracked
 separately from mocked download tests.
