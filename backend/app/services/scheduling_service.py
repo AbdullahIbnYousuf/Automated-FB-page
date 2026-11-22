@@ -24,6 +24,7 @@ from app.services.errors import AppError
 from app.services.facebook_scheduler import FacebookScheduler
 from app.services.media_service import MediaService, StoredObject
 from app.services.post_service import validate_caption
+from app.services.video_validation import VIDEO_MIME_TYPE
 
 
 logger = logging.getLogger(__name__)
@@ -51,6 +52,7 @@ class SchedulingService:
 
     async def schedule_post(
         self, post_id: str, *, requested_mode: SchedulingMode | None = None,
+        video_confirmed: bool = False,
     ) -> ScheduleResponse:
         mode = self._selected_mode(requested_mode)
         now = datetime.now(UTC)
@@ -116,7 +118,12 @@ class SchedulingService:
 
         post = self._load_post(post_id)
         try:
-            image = await self._validate_post(post, now=now)
+            if mode is SchedulingMode.FACEBOOK_SCHEDULE and post.video_object_path:
+                if not self.settings.video_facebook_scheduling_enabled:
+                    raise AppError(code="VIDEO_PUBLISHING_DISABLED", message="Real video scheduling is disabled.", status_code=503)
+                if not video_confirmed:
+                    raise AppError(code="VIDEO_APPROVAL_REQUIRED", message="Confirm the exact video, caption, Page and local time before submitting.", status_code=422)
+            media = await self._validate_post(post, now=now)
             if mode is SchedulingMode.DRY_RUN:
                 dry_run = self.dry_run_scheduler.schedule(post)
                 return self._record_success(
@@ -128,7 +135,7 @@ class SchedulingService:
                 )
 
             with anyio.CancelScope(shield=True):
-                command = self.facebook_scheduler.prepare(post, image)
+                command = self.facebook_scheduler.prepare(post, media)
                 attempt.external_request_made = True
                 attempt.safe_message = "Facebook scheduling request was initiated."
                 self.session.commit()
@@ -228,15 +235,16 @@ class SchedulingService:
                 status_code=422,
             )
         try:
-            return await self.media.get_validated_object(
-                post.image_object_path,
-                expected_mime_type=post.image_mime_type,
-            )
+            if post.video_object_path:
+                return await self.media.get_validated_object(post.video_object_path, expected_mime_type=VIDEO_MIME_TYPE)
+            if post.image_object_path and post.image_mime_type:
+                return await self.media.get_validated_object(post.image_object_path, expected_mime_type=post.image_mime_type)
+            raise AppError(code="MEDIA_NOT_FOUND", message="Stored media is missing.", status_code=404)
         except AppError as exc:
             if exc.code == "MEDIA_NOT_FOUND":
                 raise AppError(
-                    code="MISSING_IMAGE",
-                    message="The stored image is missing or unreadable.",
+                    code="MISSING_VIDEO" if post.video_object_path else "MISSING_IMAGE",
+                    message="The stored media is missing or unreadable." if post.video_object_path else "The stored image is missing or unreadable.",
                     status_code=422,
                 ) from exc
             raise

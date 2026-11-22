@@ -6,20 +6,24 @@ import type {
 } from "../types/post";
 import { apiRequest } from "./client";
 
-export interface CreatePostInput {
+interface DraftInput {
   caption: string;
-  image: File;
   scheduledForLocal: string;
   timezone: string;
 }
 
+export type CreatePostInput = DraftInput & (
+  { image: File; video?: never } | { video: File; image?: never }
+);
+
 export function createPost(input: CreatePostInput): Promise<PostRecord> {
   const form = new FormData();
   form.set("caption", input.caption);
-  form.set("image", input.image);
+  if (input.video) form.set("video", input.video);
+  else form.set("image", input.image);
   form.set("scheduled_for_local", input.scheduledForLocal);
   form.set("timezone", input.timezone);
-  return apiRequest<PostRecord>("/api/posts", {
+  return apiRequest<PostRecord>(input.video ? "/api/posts/video" : "/api/posts", {
     method: "POST",
     body: form,
   });
@@ -44,8 +48,8 @@ export function updatePost(
   });
 }
 
-export function schedulePost(postId: string): Promise<ScheduleResult> {
-  return apiRequest<ScheduleResult>(`/api/posts/${postId}/schedule`, {
+export function schedulePost(postId: string, dryRun = false): Promise<ScheduleResult> {
+  return apiRequest<ScheduleResult>(`/api/posts/${postId}/schedule${dryRun ? "?dry_run=true" : ""}`, {
     method: "POST",
   });
 }

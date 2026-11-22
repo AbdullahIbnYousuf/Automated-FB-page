@@ -64,7 +64,7 @@ export function PostsPage() {
             const latestAttempt = post.attempts[0];
             return (
               <Link className="post-row" to={`/posts/${post.id}`} key={post.id}>
-                <AuthenticatedImage path={post.image_url} alt="" className="post-row__image" />
+                {post.video_url ? <span className="post-row__image video-label">MP4</span> : post.image_url ? <AuthenticatedImage path={post.image_url} alt="" className="post-row__image" /> : null}
                 <div className="post-row__body">
                   <div className="post-row__badges">
                     <PostStatusBadge status={post.status} />

@@ -4,6 +4,7 @@ import { Link, useParams } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { getPost, schedulePost, updatePost } from "../api/posts";
 import { AuthenticatedImage } from "../components/AuthenticatedImage";
+import { AuthenticatedVideo } from "../components/AuthenticatedVideo";
 import { AttemptStatusBadge, PostStatusBadge } from "../components/PostStatusBadge";
 import { useSystemStatus } from "../state/SystemStatusContext";
 import type { PostRecord, ScheduleResult } from "../types/post";
@@ -27,7 +28,7 @@ export function PostDetailsPage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [scheduleResult, setScheduleResult] = useState<ScheduleResult | null>(null);
-  const realSchedulingEnabled = systemStatus?.publishing_enabled === true;
+  const realSchedulingEnabled = !post?.video_url && systemStatus?.publishing_enabled === true;
 
   const applyPost = useCallback((record: PostRecord) => {
     const parts = formPartsFromLocalIso(record.scheduled_for_local);
@@ -81,7 +82,7 @@ export function PostDetailsPage() {
     setError(null);
     setNotice(null);
     try {
-      const result = await schedulePost(post.id);
+      const result = await schedulePost(post.id, Boolean(post.video_url));
       setScheduleResult(result);
       applyPost(await getPost(post.id));
     } catch (caught) {
@@ -121,7 +122,7 @@ export function PostDetailsPage() {
   const editBlocked =
     ["scheduling", "scheduled", "cancelled"].includes(post.status) || unknownOutcome;
   const realModeBlocked =
-    systemStatus?.publish_mode === "facebook_schedule" && !realSchedulingEnabled;
+    !post.video_url && systemStatus?.publish_mode === "facebook_schedule" && !realSchedulingEnabled;
 
   return (
     <div className="page-stack">
@@ -155,8 +156,8 @@ export function PostDetailsPage() {
 
       <div className="detail-layout">
         <section className="detail-card detail-card--media">
-          <AuthenticatedImage path={post.image_url} alt="Uploaded post" />
-          <div><span>Stored image</span><strong>{post.original_filename}</strong><small>{post.image_mime_type}</small></div>
+          {post.video_url ? <AuthenticatedVideo path={post.video_url} /> : post.image_url ? <AuthenticatedImage path={post.image_url} alt="Uploaded post" /> : null}
+          <div><span>{post.video_url ? "Stored video" : "Stored image"}</span><strong>{post.original_filename}</strong><small>{post.video_url ? "video/mp4" : post.image_mime_type}</small></div>
         </section>
 
         <section className="composer-panel detail-editor">

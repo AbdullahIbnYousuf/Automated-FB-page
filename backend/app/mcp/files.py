@@ -17,6 +17,7 @@ from starlette.datastructures import Headers
 
 from app.config import Settings
 from app.services.errors import AppError
+from app.services.video_validation import VIDEO_MIME_TYPE, video_too_large
 
 
 logger = logging.getLogger(__name__)
@@ -76,7 +77,7 @@ class ChatGPTFileDownloader:
         )
         return AppError(
             code="FILE_URL_NOT_ALLOWED", status_code=422,
-            message="The image URL must use a verified ChatGPT HTTPS file host. Reattach the image or use the dashboard.",
+            message="The attachment URL must use a verified ChatGPT HTTPS file host. Reattach the file or use the dashboard.",
         )
 
     async def _validate_url(self, value: str, *, redirect_hop: int = 0) -> None:
@@ -124,14 +125,17 @@ class ChatGPTFileDownloader:
         if not public:
             raise self._url_rejected("dns_non_public", host, redirect_hop)
 
-    async def download(self, file: ChatGPTFile) -> UploadFile:
+    async def download(self, file: ChatGPTFile, *, video: bool = False) -> UploadFile:
         current_url = file.download_url
+        media = "video" if video else "image"
+        limit = self.settings.max_video_upload_bytes if video else self.settings.max_upload_bytes
+        too_large = lambda: video_too_large(limit) if video else self._too_large()
         try:
             with anyio.fail_after(self.settings.mcp_file_timeout_seconds):
                 async with httpx.AsyncClient(
                     timeout=self.settings.mcp_file_timeout_seconds,
                     follow_redirects=False, trust_env=False, transport=self.transport,
-                    headers={"Accept": "image/jpeg,image/png", "Accept-Encoding": "identity"},
+                    headers={"Accept": VIDEO_MIME_TYPE if video else "image/jpeg,image/png", "Accept-Encoding": "identity"},
                 ) as client:
                     for hop in range(3):
                         await self._validate_url(current_url, redirect_hop=hop)
@@ -148,25 +152,28 @@ class ChatGPTFileDownloader:
                             if response.status_code != 200:
                                 raise AppError(
                                     code="FILE_UNAVAILABLE", status_code=422,
-                                    message="The ChatGPT image could not be downloaded. Its link may have expired; reattach it.",
+                                    message=f"The ChatGPT {media} could not be downloaded. Reattach it or use the dashboard.",
                                 )
                             size = response.headers.get("content-length")
-                            if size and (not size.isdigit() or int(size) > self.settings.max_upload_bytes):
-                                raise self._too_large()
+                            if size and (not size.isdigit() or int(size) > limit):
+                                raise too_large()
                             if response.headers.get("content-encoding", "identity").lower() != "identity":
-                                raise AppError(code="INVALID_IMAGE", message="Encoded file responses are not supported.", status_code=422)
+                                raise AppError(code="INVALID_VIDEO" if video else "INVALID_IMAGE", message="Encoded file responses are not supported.", status_code=422)
                             content = bytearray()
                             async for chunk in response.aiter_bytes(chunk_size=65536):
+                                if len(content) + len(chunk) > limit:
+                                    raise too_large()
                                 content.extend(chunk)
-                                if len(content) > self.settings.max_upload_bytes:
-                                    raise self._too_large()
+                            if video:
+                                name = Path(file.file_name.replace("\\", "/")).name if file.file_name else "chatgpt-video.mp4"
+                                return UploadFile(file=BytesIO(content), filename=name, headers=Headers({"content-type": file.mime_type or VIDEO_MIME_TYPE}))
                             return self._upload(bytes(content), file)
         except (httpx.HTTPError, TimeoutError) as exc:
             raise AppError(
                 code="FILE_UNAVAILABLE", status_code=422,
-                message="The ChatGPT image download failed. Reattach the image; no Facebook request was made.",
+                message=f"The ChatGPT {media} download failed. Reattach it or use the dashboard; no Facebook request was made.",
             ) from exc
-        raise AppError(code="FILE_UNAVAILABLE", message="The image redirected too many times. Reattach it.", status_code=422)
+        raise AppError(code="FILE_UNAVAILABLE", message="The file redirected too many times. Reattach it or use the dashboard.", status_code=422)
 
     def _upload(self, content: bytes, file: ChatGPTFile) -> UploadFile:
         try:

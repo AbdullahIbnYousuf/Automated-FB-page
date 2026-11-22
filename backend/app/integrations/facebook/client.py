@@ -1,8 +1,9 @@
-"""Narrow client for Page identity reads and one scheduled-photo write."""
+"""Narrow client for Page identity reads and scheduled-media writes."""
 
 import re
 from collections.abc import Mapping
 
+import anyio
 import httpx
 
 from app.config import Settings
@@ -16,6 +17,7 @@ from app.integrations.facebook.schemas import (
     FacebookPageIdentity,
     FacebookScheduledPhoto,
 )
+from app.services.errors import AppError
 
 
 _API_VERSION_PATTERN = re.compile(r"^v\d+\.\d+$")
@@ -175,6 +177,57 @@ class FacebookClient:
                 outcome_unknown=True,
             )
         return FacebookScheduledPhoto(id=photo_id, post_id=post_id)
+
+    async def schedule_page_video(
+        self, *, caption: str, video_content: bytes, scheduled_publish_time: int,
+    ) -> str:
+        """Send a single unpublished, scheduled Page video. Never retry a write."""
+        if not self._settings.video_facebook_scheduling_enabled:
+            raise AppError(code="VIDEO_PUBLISHING_DISABLED", message="Real video scheduling is disabled.", status_code=503)
+        version, page_id, token = self.configuration(for_write=True)
+
+        def unknown() -> FacebookWriteError:
+            return FacebookWriteError(
+                code=FacebookWriteErrorCode.OUTCOME_UNKNOWN, outcome_unknown=True,
+                safe_message="The video scheduling outcome is unknown. Check Meta; do not resubmit this post.",
+            )
+
+        try:
+            with anyio.fail_after(45):
+                async with httpx.AsyncClient(
+                    base_url="https://graph.facebook.com", timeout=45,
+                    follow_redirects=False, trust_env=False, transport=self._transport,
+                ) as client:
+                    response = await client.post(
+                        f"/{version}/{page_id}/videos",
+                        data={"description": caption, "published": "false",
+                              "scheduled_publish_time": str(scheduled_publish_time),
+                              "unpublished_content_type": "SCHEDULED"},
+                        files={"source": ("scheduled-video.mp4", video_content, "video/mp4")},
+                        headers={"Authorization": f"Bearer {token}", "Accept": "application/json"},
+                    )
+        except (httpx.RequestError, TimeoutError) as exc:
+            raise unknown() from exc
+        if not response.is_success:
+            code, _ = self._extract_error_codes(response)
+            if response.is_client_error and code is not None and code not in {1, 2, 6000, 6001}:
+                if code in {190, 100} or code in _PERMISSION_ERROR_CODES or code in _RATE_LIMIT_ERROR_CODES:
+                    raise self._safe_write_response_error(response)
+                raise FacebookWriteError(
+                    code=FacebookWriteErrorCode.REJECTED,
+                    safe_message="Meta rejected the scheduled video request.", meta_error_code=code,
+                )
+            raise unknown()
+        try:
+            payload = response.json()
+            if not isinstance(payload, dict) or "error" in payload:
+                raise ValueError
+            raw_id = payload["id"]
+            if type(raw_id) not in {str, int} or not re.fullmatch(r"[1-9][0-9]{0,254}", str(raw_id)):
+                raise ValueError
+        except (KeyError, TypeError, ValueError) as exc:
+            raise unknown() from exc
+        return str(raw_id)
 
     def configuration(self, *, for_write: bool = False) -> tuple[str, str, str]:
         api_version = self._settings.facebook_graph_api_version.strip()

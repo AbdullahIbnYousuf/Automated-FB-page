@@ -3,6 +3,7 @@ import { previewLocalDateTime } from "../utils/datetime";
 interface PostPreviewProps {
   caption: string;
   imageUrl: string | null;
+  video?: boolean;
   date: string;
   time: string;
   timezone: string;
@@ -11,6 +12,7 @@ interface PostPreviewProps {
 export function PostPreview({
   caption,
   imageUrl,
+  video = false,
   date,
   time,
   timezone,
@@ -28,10 +30,12 @@ export function PostPreview({
         {caption.trim() || "Your caption preview will appear here."}
       </p>
       <div className="post-preview__media">
-        {imageUrl ? (
+        {imageUrl && video ? (
+          <video src={imageUrl} controls playsInline aria-label="Selected video preview" />
+        ) : imageUrl ? (
           <img src={imageUrl} alt="Selected post preview" />
         ) : (
-          <span>Select one JPEG or PNG image</span>
+          <span>{video ? "Select one MP4 video" : "Select one JPEG or PNG image"}</span>
         )}
       </div>
       <footer className="post-preview__schedule">

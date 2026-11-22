@@ -277,3 +277,27 @@ https://facebook-scheduler-bridge.sassypear13.chatgpt.site/oauth/callback
 Existing callback and operator verification restrictions remain enforced.
 See [bridge contract and remaining setup](FACEBOOK_SCHEDULER_BRIDGE.md) for the
 caller-specific status flag, exact callback validation and local test evidence.
+
+## Private video drafts
+
+`POST /api/posts/video` takes one `video` multipart file, `caption`,
+`scheduled_for_local`, and `timezone`. The image endpoint is unchanged. After
+operator authentication, the video route bounds the multipart body and image-free
+form fields; the media service validates the MP4 container and streams and writes
+to the private `post-videos` bucket (20 MiB, `video/mp4`). A post references either
+its existing image columns or `video_object_path`. A `video_url` is an
+authenticated backend route, not a Supabase URL. The dashboard uses a private
+blob URL for preview and requests only dry runs for video.
+
+The scheduler MCP adds `create_video_post` with a `video` file reference and
+the existing durable request-key contract. It uses the same creation and storage
+logic as REST. The Sites-hosted Bridge forwards the same attachment reference
+and request key; ChatGPT's actual MP4 handoff must be verified separately. The
+dashboard remains the fallback upload path.
+
+The video Meta branch uses `POST /{version}/{page_id}/videos` on
+`graph.facebook.com`, with `source`, `description`, `published=false`,
+`unpublished_content_type=SCHEDULED` and the UTC timestamp. The same in-progress
+claim and unknown-outcome lock apply. A new disabled-by-default video gate and
+`confirm_video=true` are required for real MCP submission. A returned video ID
+means accepted for scheduling; processing and eventual publication are not verified.

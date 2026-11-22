@@ -1,7 +1,10 @@
 """Isolated database, authentication, and private-storage test fixtures."""
 
 from collections.abc import Iterator
+from io import BytesIO
 
+import av
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
@@ -26,6 +29,7 @@ ENVIRONMENT_KEYS = (
     "DATABASE_URL",
     "FRONTEND_ORIGINS",
     "MAX_UPLOAD_BYTES",
+    "MAX_VIDEO_UPLOAD_BYTES",
     "MAX_IMAGE_PIXELS",
     "AUTH_REQUIRED",
     "OPERATOR_EMAIL",
@@ -33,10 +37,12 @@ ENVIRONMENT_KEYS = (
     "SUPABASE_PUBLISHABLE_KEY",
     "SUPABASE_SECRET_KEY",
     "SUPABASE_STORAGE_BUCKET",
+    "SUPABASE_VIDEO_BUCKET",
     "FACEBOOK_GRAPH_API_VERSION",
     "FACEBOOK_PAGE_ID",
     "FACEBOOK_PAGE_ACCESS_TOKEN",
     "FACEBOOK_REQUEST_TIMEOUT_SECONDS",
+    "VIDEO_FACEBOOK_SCHEDULING_ENABLED",
     "MCP_RESOURCE_URL",
     "MCP_FILE_ALLOWED_HOSTS",
     "MCP_FILE_ALLOWED_DOMAIN_SUFFIXES",
@@ -46,10 +52,37 @@ ENVIRONMENT_KEYS = (
 )
 
 
-class InMemoryMediaService:
+def make_mp4(*, codec="libx264") -> bytes:
+    output = BytesIO()
+    with av.open(output, "w", format="mp4") as container:
+        stream = container.add_stream(codec, rate=4)
+        stream.width, stream.height, stream.pix_fmt = 32, 32, "yuv420p"
+        for shade in (32, 64, 128, 192):
+            frame = av.VideoFrame(32, 32, "yuv420p")
+            for index, plane in enumerate(frame.planes):
+                plane.update(bytes([shade if index == 0 else 128]) * plane.buffer_size)
+            container.mux(stream.encode(frame))
+        container.mux(stream.encode())
+    return output.getvalue()
+
+
+@pytest.fixture
+def make_video():
+    return make_mp4
+
+
+class InMemoryMediaService(MediaService):
     def __init__(self, settings: Settings) -> None:
+        super().__init__(settings)
         self.validator = MediaService(settings)
         self.objects: dict[str, StoredObject] = {}
+
+    async def _request(self, method, url, **kwargs):
+        assert method == "POST" and "/post-videos/posts/" in url
+        assert kwargs["headers"] == {"Content-Type": "video/mp4", "x-upsert": "false"}
+        object_path = "posts/" + url.rsplit("/", 1)[1]
+        self.objects[object_path] = StoredObject(kwargs["content"], "video/mp4")
+        return httpx.Response(201)
 
     async def store_upload(self, upload) -> StoredImage:  # type: ignore[no-untyped-def]
         content, extension, mime_type, display_name = await self.validator._validate_upload(
@@ -89,6 +122,8 @@ class InMemoryMediaService:
         *,
         expected_mime_type: str,
     ) -> StoredObject:
+        if expected_mime_type == "video/mp4":
+            return await super().get_validated_object(object_path, expected_mime_type=expected_mime_type)
         stored = await self.get_object(object_path)
         if stored.mime_type != expected_mime_type:
             raise AppError(

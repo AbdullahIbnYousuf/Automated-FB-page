@@ -2,9 +2,9 @@
 
 This repository supplies the restricted MCP client boundary for the separate
 private Sites bridge. The bridge calls the existing FastAPI `/mcp` endpoint;
-posts, scheduling attempts, durable creation keys, private images, authentication
+posts, scheduling attempts, durable creation keys, private media, authentication
 and Meta requests stay in the existing scheduler and Supabase project. No second
-scheduling database, queue, image bucket or publishing implementation is needed.
+scheduling database, queue, media store or publishing implementation is needed.
 
 ## Client boundary
 
@@ -27,6 +27,7 @@ status responses; it does not describe whether publishing is globally enabled.
 | `test_facebook_connection` | Allowed; existing read-only Page identity check |
 | `list_posts`, `get_post` | Allowed |
 | `create_post` | Allowed; saves one draft with a durable `request_key` |
+| `create_video_post` | Allowed; saves one private MP4 draft with a durable `request_key` |
 | `schedule_post` with `mode=dry_run` or omitted mode | Allowed; simulation only |
 | `schedule_post` with `mode=facebook_schedule` | Allowed only with all three live gates below; otherwise `BRIDGE_ACTION_FORBIDDEN` |
 | `update_post` | `BRIDGE_ACTION_FORBIDDEN` |
@@ -61,13 +62,20 @@ Authentication remains required (`AUTH_REQUIRED=true`). Missing/invalid opt-in
 configuration fails closed. Repository defaults remain false/dry_run.
 
 The Sites bridge exposes `schedule_post_live(post_id, confirmed=true)` only after
-approval of the exact caption, image, Page and future local time. It checks the
+approval of the exact caption, media, Page and future local time. It checks the
 authenticated capability flag, then calls the existing `schedule_post` with
 `mode=facebook_schedule`. The backend reuses the existing atomic claim, image
 decoding, time/Page validation, scheduling attempts and Meta adapter. Setup
 authorization does not approve any particular post. There is no automatic retry.
 The separate dry-run action always sends `mode=dry_run`; omitted MCP mode also
 remains dry_run regardless of the publishing switches.
+
+For live video the bridge also requires `confirm_video=true` and authenticated
+`video_publishing_enabled=true` from the backend. This is in addition to the
+three bridge live gates above. Keep `VIDEO_FACEBOOK_SCHEDULING_ENABLED=false`
+for initial testing. If ChatGPT cannot pass an actual MP4 attachment, upload
+through the dashboard and give the bridge the draft ID for a dry run. No video
+bytes or temporary attachment URLs are stored by the bridge.
 
 Enabling these settings starts no workers or queue processing and never submits
 existing draft/ready posts. Each live call must target one existing post.
@@ -138,7 +146,8 @@ allowlisting and bounded credential-free HTTPS downloads still apply. Optional
 subdomains with a DNS-label boundary; no other suffix is supported. Azure accounts
 still need individual provenance review before adding an exact entry to
 `MCP_FILE_ALLOWED_HOSTS`. See [policy proposal and evidence](CHATGPT_IMAGE_TRANSFER.md).
-No new frontend environment variable or Supabase migration is needed.
+There is no new frontend environment variable. Video rollout requires the
+`20261122000100_private_video_drafts.sql` migration before the backend deploy.
 
 ## Local review evidence — 1 November 2026
 

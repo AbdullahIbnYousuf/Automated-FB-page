@@ -21,8 +21,9 @@ class SchedulingAttemptResponse(BaseModel):
 class PostResponse(BaseModel):
     id: str
     caption: str
-    image_url: str
-    image_mime_type: str
+    image_url: str | None
+    image_mime_type: str | None
+    video_url: str | None = None
     original_filename: str
     status: PostStatus
     scheduled_for_utc: datetime

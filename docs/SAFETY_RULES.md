@@ -20,6 +20,8 @@ PUBLISH_MODE=facebook_schedule
 ```
 
 The backend — not the frontend — enforces this rule.
+Video writes additionally require `VIDEO_FACEBOOK_SCHEDULING_ENABLED=true`
+and operator confirmation of the exact video, caption, Page and time.
 
 ## 2. Secrets
 
@@ -96,7 +98,7 @@ Before every real Facebook scheduling write, the backend must verify:
 - post exists
 - post is in a valid state
 - caption is valid
-- image is valid and readable
+- media is valid and readable
 - schedule time is valid
 - request is not an obvious duplicate/repeated click
 
@@ -141,6 +143,12 @@ For image uploads:
 - never execute uploaded files
 - do not trust client filenames
 - do not overwrite an existing file accidentally
+
+For video uploads, permit one MP4 with H.264 and optional AAC only. Bound the
+request and file independently, inspect the stored bytes again before scheduling,
+and keep the video bucket and playback route private. Do not fetch external
+references from the video container. The first hosted trial saves a draft and
+runs a dry run only.
 
 ## 10. Logging and Errors
 

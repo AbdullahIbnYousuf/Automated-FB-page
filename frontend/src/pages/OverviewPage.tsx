@@ -102,7 +102,7 @@ export function OverviewPage() {
           <div className="recent-posts">
             {posts.slice(0, 3).map((post) => (
               <Link to={`/posts/${post.id}`} className="recent-post" key={post.id}>
-                <AuthenticatedImage path={post.image_url} alt="" />
+                {post.video_url ? <span className="video-label">MP4</span> : post.image_url ? <AuthenticatedImage path={post.image_url} alt="" /> : null}
                 <div><PostStatusBadge status={post.status} /><strong>{post.caption}</strong><small>{formatZonedDateTime(post.scheduled_for_utc, post.display_timezone)}</small></div>
               </Link>
             ))}

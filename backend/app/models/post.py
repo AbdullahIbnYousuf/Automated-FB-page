@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from enum import StrEnum
 from uuid import uuid4
 
-from sqlalchemy import Boolean, Enum, ForeignKey, String, Text
+from sqlalchemy import Boolean, CheckConstraint, Enum, ForeignKey, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base, UTCDateTime
@@ -40,15 +40,19 @@ class AttemptResult(StrEnum):
 
 class Post(Base):
     __tablename__ = "posts"
+    __table_args__ = (CheckConstraint(
+        "(image_object_path is not null and image_mime_type is not null and video_object_path is null) "
+        "or (image_object_path is null and image_mime_type is null and video_object_path is not null)",
+        name="posts_single_media",
+    ),)
 
     id: Mapped[str] = mapped_column(
         String(36), primary_key=True, default=lambda: str(uuid4())
     )
     caption: Mapped[str] = mapped_column(Text, nullable=False)
-    image_object_path: Mapped[str] = mapped_column(
-        String(255), nullable=False, unique=True
-    )
-    image_mime_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    image_object_path: Mapped[str | None] = mapped_column(String(255), unique=True)
+    image_mime_type: Mapped[str | None] = mapped_column(String(32))
+    video_object_path: Mapped[str | None] = mapped_column(String(255), unique=True)
     original_filename: Mapped[str] = mapped_column(String(255), nullable=False)
     status: Mapped[PostStatus] = mapped_column(
         Enum(

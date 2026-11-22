@@ -17,6 +17,7 @@ from app.schemas.post import (
 from app.services.errors import AppError
 from app.services.media_service import StoredImage
 from app.services.time_service import parse_local_schedule, utc_to_local_iso
+from app.services.video_validation import VIDEO_MIME_TYPE
 
 
 def validate_caption(caption: str) -> str:
@@ -65,8 +66,9 @@ def post_response(post: Post) -> PostResponse:
     return PostResponse(
         id=post.id,
         caption=post.caption,
-        image_url=f"/api/media/{post.image_object_path}",
+        image_url=f"/api/media/{post.image_object_path}" if post.image_object_path else None,
         image_mime_type=post.image_mime_type,
+        video_url=f"/api/media/{post.video_object_path}" if post.video_object_path else None,
         original_filename=post.original_filename,
         status=post.status,
         scheduled_for_utc=post.scheduled_for_utc,
@@ -103,10 +105,12 @@ class PostService:
         scheduled_utc = parse_local_schedule(
             scheduled_for_local, display_timezone
         )
+        is_video = image.mime_type == VIDEO_MIME_TYPE
         post = Post(
             caption=cleaned_caption,
-            image_object_path=image.object_path,
-            image_mime_type=image.mime_type,
+            image_object_path=None if is_video else image.object_path,
+            image_mime_type=None if is_video else image.mime_type,
+            video_object_path=image.object_path if is_video else None,
             original_filename=image.original_filename,
             status=PostStatus.DRAFT,
             scheduled_for_utc=scheduled_utc,

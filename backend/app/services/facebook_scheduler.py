@@ -1,4 +1,4 @@
-"""Single-purpose adapter for one scheduled Facebook Page photo."""
+"""Adapter for one scheduled Facebook Page photo or video."""
 
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -8,6 +8,7 @@ from app.integrations.facebook.schemas import FacebookScheduledPhoto
 from app.models.post import Post
 from app.services.errors import AppError
 from app.services.media_service import StoredObject
+from app.services.video_validation import VIDEO_MIME_TYPE
 
 
 MINIMUM_SCHEDULE_DELAY = timedelta(minutes=10)
@@ -18,8 +19,8 @@ MINIMUM_BOUNDARY_BUFFER = timedelta(seconds=30)
 @dataclass(frozen=True)
 class FacebookScheduleCommand:
     caption: str
-    image_content: bytes
-    image_mime_type: str
+    media_content: bytes
+    media_mime_type: str
     scheduled_publish_time: int
 
 
@@ -38,7 +39,7 @@ class FacebookScheduler:
     def prepare(
         self,
         post: Post,
-        image: StoredObject,
+        media: StoredObject,
         *,
         now: datetime | None = None,
     ) -> FacebookScheduleCommand:
@@ -64,18 +65,24 @@ class FacebookScheduler:
 
         return FacebookScheduleCommand(
             caption=post.caption,
-            image_content=image.content,
-            image_mime_type=post.image_mime_type,
+            media_content=media.content,
+            media_mime_type=media.mime_type,
             scheduled_publish_time=int(scheduled_at.timestamp()),
         )
 
     async def execute(
         self, command: FacebookScheduleCommand
     ) -> FacebookScheduleResult:
+        if command.media_mime_type == VIDEO_MIME_TYPE:
+            video_id = await self.client.schedule_page_video(
+                caption=command.caption, video_content=command.media_content,
+                scheduled_publish_time=command.scheduled_publish_time,
+            )
+            return FacebookScheduleResult(facebook_object_id=video_id)
         response: FacebookScheduledPhoto = await self.client.schedule_page_photo(
             caption=command.caption,
-            image_content=command.image_content,
-            image_mime_type=command.image_mime_type,
+            image_content=command.media_content,
+            image_mime_type=command.media_mime_type,
             scheduled_publish_time=command.scheduled_publish_time,
         )
         return FacebookScheduleResult(facebook_object_id=response.object_id)

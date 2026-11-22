@@ -22,8 +22,9 @@ export interface SchedulingAttempt {
 export interface PostRecord {
   id: string;
   caption: string;
-  image_url: string;
-  image_mime_type: string;
+  image_url: string | null;
+  image_mime_type: string | null;
+  video_url?: string | null;
   original_filename: string;
   status: PostStatus;
   scheduled_for_utc: string;

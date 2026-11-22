@@ -20,6 +20,8 @@ class SystemStatusResponse(BaseModel):
     publish_mode: PublishMode
     automation_enabled: bool
     publishing_enabled: bool
+    max_video_upload_bytes: int
+    video_publishing_enabled: bool
     timezone: str
     graph_api_version: str
     facebook: FacebookConfigurationStatus
@@ -38,6 +40,8 @@ def system_status(settings: Settings) -> SystemStatusResponse:
         publish_mode=settings.publish_mode,
         automation_enabled=settings.automation_enabled,
         publishing_enabled=settings.publishing_enabled,
+        max_video_upload_bytes=settings.max_video_upload_bytes,
+        video_publishing_enabled=settings.publishing_enabled and settings.video_facebook_scheduling_enabled,
         timezone=settings.app_timezone,
         graph_api_version=settings.facebook_graph_api_version,
         facebook=FacebookConfigurationStatus(

@@ -4,7 +4,7 @@
 
 This repository contains the first version of a larger Facebook Page operations and automation product.
 
-The current product is a **Facebook Page Scheduler with a web GUI and a private ChatGPT MCP plugin**. The authorized operator provides a caption, one image, and a future date/time through either client; both reuse the same backend scheduling services and official Meta Graph API. ChatGPT may prepare content outside this application; this backend does not generate content.
+The current product is a **Facebook Page Scheduler with a web GUI and a private ChatGPT MCP plugin**. The authorized operator provides a caption, one image or MP4 video, and a future date/time; clients reuse the same backend scheduling services and official Meta Graph API. ChatGPT may prepare content outside this application; this backend does not generate content.
 
 This repository is **not** an AI content-generation project yet. Content creation will be added much later. The near-term roadmap is to automate the management of existing content first: scheduling, content management, analytics, scoring, dashboard workflows, and comments.
 
@@ -34,7 +34,7 @@ V1 must let a user:
 
 1. Open a web GUI.
 2. Enter or paste a Facebook caption.
-3. Upload one image.
+3. Upload one image or supported MP4 video.
 4. Select a future publication date and time in the configured timezone.
 5. Preview the content.
 6. Save it as a draft or schedule it.
@@ -95,6 +95,8 @@ PUBLISH_MODE=facebook_schedule
 ```
 
 Missing or invalid configuration must fail closed: do not publish.
+Real video scheduling also requires `VIDEO_FACEBOOK_SCHEDULING_ENABLED=true`
+and explicit approval of the exact video, caption, Page, and time.
 
 ## 7. V1 Non-Goals
 

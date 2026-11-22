@@ -28,12 +28,19 @@ class PostInput(ToolInput):
     post_id: str = Field(min_length=1, max_length=36)
 
 
-class CreatePostInput(ToolInput):
+class DraftInput(ToolInput):
     caption: str = Field(min_length=1)
-    image: ChatGPTFile
     scheduled_for_local: str = Field(description="ISO local datetime WITHOUT offset, interpreted in timezone.")
     timezone: str = "Asia/Dhaka"
     request_key: str = Field(min_length=8, max_length=128, pattern=r"^[a-zA-Z0-9_.:-]+$", description="Stable unique key for this intended post; reuse on retries.")
+
+
+class CreatePostInput(DraftInput):
+    image: ChatGPTFile
+
+
+class CreateVideoPostInput(DraftInput):
+    video: ChatGPTFile
 
 
 class UpdatePostInput(PostInput):
@@ -44,6 +51,7 @@ class UpdatePostInput(PostInput):
 
 class SchedulePostInput(PostInput):
     mode: SchedulingMode = SchedulingMode.DRY_RUN
+    confirm_video: bool = Field(default=False, strict=True, description="For real video scheduling only: true after explicit approval of the exact video, caption, Page and local time.")
 
 
 class CreateAndScheduleInput(CreatePostInput):
@@ -59,6 +67,7 @@ class PostSummary(BaseModel):
     display_timezone: str
     facebook_object_id: str | None
     last_error_code: str | None
+    video_url: str | None = None
 
 
 class PostPage(BaseModel):

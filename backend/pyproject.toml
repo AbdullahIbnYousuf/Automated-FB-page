@@ -8,6 +8,7 @@ version = "0.1.0"
 description = "Local post-management and dry-run scheduling backend"
 requires-python = ">=3.11"
 dependencies = [
+    "av==18.1.1",
     "fastapi==0.141.1",
     "httpx==0.28.1",
     "mcp==2.3.0",

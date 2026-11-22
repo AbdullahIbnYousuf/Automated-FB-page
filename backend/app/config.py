@@ -4,12 +4,13 @@ from enum import StrEnum
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import SecretStr, field_validator
+from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 BACKEND_DIRECTORY = Path(__file__).resolve().parents[1]
 REPOSITORY_ROOT = BACKEND_DIRECTORY.parent
+MAX_VIDEO_BYTES = 20 * 1024 * 1024
 
 
 class PublishMode(StrEnum):
@@ -41,6 +42,7 @@ class Settings(BaseSettings):
     frontend_origins: str = "http://127.0.0.1:5173,http://localhost:5173"
     log_level: str = "INFO"
     max_upload_bytes: int = 5 * 1024 * 1024
+    max_video_upload_bytes: int = Field(default=MAX_VIDEO_BYTES, gt=0, le=MAX_VIDEO_BYTES)
     max_image_pixels: int = 40_000_000
 
     auth_required: bool = True
@@ -49,12 +51,14 @@ class Settings(BaseSettings):
     supabase_publishable_key: SecretStr | None = None
     supabase_secret_key: SecretStr | None = None
     supabase_storage_bucket: str = "post-images"
+    supabase_video_bucket: str = "post-videos"
     supabase_request_timeout_seconds: float = 15.0
 
     facebook_graph_api_version: str = "v26.0"
     facebook_page_id: str | None = None
     facebook_page_access_token: SecretStr | None = None
     facebook_request_timeout_seconds: float = 10.0
+    video_facebook_scheduling_enabled: bool = False
 
     mcp_resource_url: str = "https://facebook-page-operations-api.onrender.com/mcp"
     mcp_file_allowed_hosts: str = "files.oaiusercontent.com"

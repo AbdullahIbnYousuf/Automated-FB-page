@@ -17,11 +17,12 @@ As the operator of a Facebook Page, I want to paste a caption, upload an image, 
 A schedulable post contains:
 
 - `caption`: required text
-- `image`: exactly one supported image file
+- Media: exactly one supported image or one MP4 (H.264, optional AAC, at most 20 MiB)
 - `scheduled_for`: required future local date/time
 - `timezone`: application timezone; default `Asia/Dhaka`
 
-V1 does not support multiple images, video, Reels, Stories, links as a distinct post type, or platform-specific variants.
+Video is a narrow addition to the existing Page workflow; no dedicated Reels,
+Stories, media generation, multiple attachments, or platform-specific variants.
 
 ## 4. V1 Outputs
 
@@ -250,7 +251,7 @@ Explicitly excluded:
 - bulk CSV upload
 - multiple Pages
 - multiple images
-- video/Reels
+- dedicated Reels and video generation
 - public registration or multiple users
 - roles/permissions
 - SaaS billing
@@ -301,3 +302,12 @@ Creation uses persistent request keys to prevent duplicate posts on replays.
 Full acceptance additionally requires a ChatGPT web connection, actual uploaded
 and generated image checks, Meta acceptance of one specifically approved post,
 status retrieval and human confirmation in Meta's scheduled-post interface.
+
+### First video upload acceptance
+
+Upload a short MP4 and caption in the dashboard, reopen the saved draft and
+play it privately, then run a dry run with no external request or Facebook ID.
+The `/mcp` server also declares a video file input; actual MP4 handoff in each
+ChatGPT client is a separate test. If that is unavailable, schedule the saved
+dashboard draft by post ID. Live video submission is a later, separately
+approved check and is disabled by default.

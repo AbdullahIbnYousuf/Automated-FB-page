@@ -15,6 +15,7 @@ export function NewPostPage() {
   const { status } = useSystemStatus();
   const timezone = status?.timezone ?? "";
   const [caption, setCaption] = useState("");
+  const [video, setVideo] = useState(false);
   const [image, setImage] = useState<File | null>(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
   const [date, setDate] = useState("");
@@ -23,7 +24,7 @@ export function NewPostPage() {
   const [error, setError] = useState<string | null>(null);
   const [createdPost, setCreatedPost] = useState<PostRecord | null>(null);
   const [scheduleResult, setScheduleResult] = useState<ScheduleResult | null>(null);
-  const realSchedulingEnabled = status?.publishing_enabled === true;
+  const realSchedulingEnabled = !video && status?.publishing_enabled === true;
 
   useEffect(() => {
     if (!image) {
@@ -45,11 +46,16 @@ export function NewPostPage() {
     setError(null);
     setScheduleResult(null);
     if (!caption.trim() || !image || !date || !time || !timezone) {
-      setError("Caption, one image, future date, time, and backend timezone are required.");
+      setError("Caption, one media file, future date, time, and backend timezone are required.");
+      return;
+    }
+    if (video && image.size > (status?.max_video_upload_bytes ?? 20 * 1024 * 1024)) {
+      setError("The video exceeds the configured upload limit.");
       return;
     }
     if (
       action === "schedule" &&
+      !video &&
       status?.publish_mode === "facebook_schedule" &&
       !status.publishing_enabled
     ) {
@@ -61,7 +67,7 @@ export function NewPostPage() {
     try {
       const post = await createPost({
         caption,
-        image,
+        ...(video ? { video: image } : { image }),
         scheduledForLocal: joinLocalDateTime(date, time),
         timezone,
       });
@@ -70,7 +76,7 @@ export function NewPostPage() {
         navigate(`/posts/${post.id}`);
         return;
       }
-      const result = await schedulePost(post.id);
+      const result = await schedulePost(post.id, video);
       setScheduleResult(result);
     } catch (caught) {
       setError(
@@ -87,10 +93,10 @@ export function NewPostPage() {
     <div className="page-stack">
       <section className="section-panel section-panel--intro compact-intro">
         <span className="eyebrow">Local post workspace</span>
-        <h2>Prepare one image post</h2>
+        <h2>Prepare a Page post</h2>
         <p>
-          Save a durable hosted draft, run a safe simulation, or schedule the
-          validated image on Facebook when both backend publishing switches are enabled.
+          Save one image or video as a private draft. You can test video scheduling
+          here with a dry run; nothing will be sent to Facebook.
         </p>
       </section>
 
@@ -149,15 +155,30 @@ export function NewPostPage() {
           </div>
 
           <div className="field-group">
-            <label htmlFor="image">One image</label>
+            <label htmlFor="media-type">Post media</label>
+            <select id="media-type" value={video ? "video" : "image"} disabled={submitting !== null} onChange={(event) => {
+              setVideo(event.target.value === "video");
+              setImage(null);
+              setCreatedPost(null);
+              setScheduleResult(null);
+              setError(null);
+            }}>
+              <option value="image">Image</option>
+              <option value="video">Video</option>
+            </select>
+          </div>
+
+          <div className="field-group">
+            <label htmlFor="image">{video ? "One MP4 video" : "One image"}</label>
             <input
+              key={video ? "video" : "image"}
               id="image"
               type="file"
-              accept=".jpg,.jpeg,.png,image/jpeg,image/png"
+              accept={video ? ".mp4,video/mp4" : ".jpg,.jpeg,.png,image/jpeg,image/png"}
               onChange={handleImageChange}
               disabled={submitting !== null}
             />
-            <small>JPEG or PNG only. The backend validates content, type, and size.</small>
+            <small>{video ? `MP4 (H.264, optional AAC), up to ${(status?.max_video_upload_bytes ?? 20 * 1024 * 1024) / (1024 * 1024)} MiB.` : "JPEG or PNG only. The backend validates content, type, and size."}</small>
           </div>
 
           <div className="schedule-fields">
@@ -210,7 +231,7 @@ export function NewPostPage() {
               disabled={
                 submitting !== null ||
                 !status ||
-                (status.publish_mode === "facebook_schedule" && !realSchedulingEnabled)
+                (!video && status.publish_mode === "facebook_schedule" && !realSchedulingEnabled)
               }
               onClick={() => void submit("schedule")}
             >
@@ -233,6 +254,7 @@ export function NewPostPage() {
         <PostPreview
           caption={caption}
           imageUrl={imagePreviewUrl}
+          video={video}
           date={date}
           time={time}
           timezone={timezone}

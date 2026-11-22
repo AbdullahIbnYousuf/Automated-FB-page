@@ -35,7 +35,7 @@ Local React and FastAPI development use the same Supabase project. SQLite and lo
 The operator supplies:
 
 - a caption
-- exactly one JPEG or PNG image
+- exactly one JPEG/PNG image or MP4 video (H.264, optional AAC, up to 20 MiB)
 - a future date/time interpreted in `Asia/Dhaka`
 
 The dashboard can save, list, view, edit, and schedule the post. In safe defaults, scheduling is simulated: the post remains `ready`, `external_request_made=false`, and no Facebook identifier is created. When both backend write switches are intentionally enabled, the same endpoint uploads the validated private image bytes and schedules one Page photo. Only Meta-confirmed acceptance produces `scheduled` and a stored Facebook reference.
@@ -159,15 +159,27 @@ Requires a valid authorized Supabase Bearer token:
 - `GET /api/facebook/status` — local safe status; no Meta request
 - `POST /api/facebook/test-connection` — explicit read-only Meta request
 - `POST /api/posts`
+- `POST /api/posts/video` — authenticated multipart MP4 draft upload
 - `GET /api/posts`
 - `GET /api/posts/{id}`
 - `PATCH /api/posts/{id}`
 - `POST /api/posts/{id}/schedule` — backend selects dry run or guarded Facebook scheduling
 - `GET /api/media/{object_path}`
 
-Private images are proxied through the authenticated backend. Supabase secret keys, database credentials, and Facebook tokens never enter the frontend.
+Private images and videos are proxied through the authenticated backend. Supabase secret keys, database credentials, and Facebook tokens never enter the frontend.
 
-`/mcp` is protected by Supabase OAuth on every request. It provides eight tools for status, connection, post retrieval/creation/editing and scheduling. MCP scheduling defaults to `dry_run`; explicit real-mode requests fail unless both publishing switches are enabled. The dashboard keeps its environment-selected scheduling behavior.
+`/mcp` is protected by Supabase OAuth on every request. In addition to the existing image tools, `create_video_post` accepts a temporary ChatGPT file reference. MP4 handoff depends on the client; if unavailable, use the dashboard and pass the draft ID to the scheduler. MCP scheduling defaults to `dry_run`. Real video scheduling additionally requires `VIDEO_FACEBOOK_SCHEDULING_ENABLED=true` and `confirm_video=true` after explicit approval. The dashboard uses dry run for video and keeps its existing image behavior.
+
+For the first hosted video trial, verify that Supabase and Render are healthy,
+apply the private video migration, and deploy the backend and dashboard. In
+**New Post**, choose **Video**, attach a short MP4 (preferably under 6 MB for the
+first trial), add a caption and future Dhaka time, and select **Save Draft**.
+Reopen it, verify playback, then run a dry-run schedule. Leave publishing off.
+The existing `post-images` limit stays 5 MiB. The new private `post-videos` bucket
+must allow `video/mp4` up to the selected video cap; the hosted global limit was
+last verified at 50 MiB. Do not use a broad hosted configuration push just to
+change the local Storage limit. Before advertising the full 20 MiB cap, verify
+the authenticated deployment can reliably transfer a boundary-sized clip.
 
 The connection test targets Graph API `v26.0` and sends exactly `GET /v26.0/{page-id}?fields=id,name` with the Page token in the HTTPS `Authorization` header.
 

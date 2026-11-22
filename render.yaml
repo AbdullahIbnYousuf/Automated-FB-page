@@ -24,14 +24,20 @@ services:
         value: INFO
       - key: MAX_UPLOAD_BYTES
         value: "5242880"
+      - key: MAX_VIDEO_UPLOAD_BYTES
+        value: "20971520"
       - key: MAX_IMAGE_PIXELS
         value: "40000000"
       - key: SUPABASE_STORAGE_BUCKET
         value: post-images
+      - key: SUPABASE_VIDEO_BUCKET
+        value: post-videos
       - key: FACEBOOK_GRAPH_API_VERSION
         value: v26.0
       - key: FACEBOOK_REQUEST_TIMEOUT_SECONDS
         value: "10"
+      - key: VIDEO_FACEBOOK_SCHEDULING_ENABLED
+        value: "false"
       - key: MCP_RESOURCE_URL
         value: https://facebook-page-operations-api.onrender.com/mcp
       - key: MCP_FILE_ALLOWED_HOSTS

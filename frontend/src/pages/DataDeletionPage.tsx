@@ -34,7 +34,7 @@ export function DataDeletionPage() {
         <p>A verified request may cover:</p>
         <ul>
           <li>stored post records and captions;</li>
-          <li>uploaded images in private application Storage;</li>
+          <li>uploaded images or videos in private application Storage;</li>
           <li>scheduling-attempt records and safe error metadata; and</li>
           <li>associated application operational data within the requested scope.</li>
         </ul>

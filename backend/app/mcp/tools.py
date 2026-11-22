@@ -20,7 +20,7 @@ from app.integrations.facebook.client import FacebookClient
 from app.integrations.facebook.schemas import FacebookConnectionStatus
 from app.mcp.files import ChatGPTFileDownloader
 from app.mcp.schemas import (
-    CreateAndScheduleInput, CreatePostInput, EmptyInput, ListPostsInput,
+    CreateAndScheduleInput, CreatePostInput, CreateVideoPostInput, EmptyInput, ListPostsInput,
     PostAndSchedule, PostInput, PostPage, PostSummary, SchedulePostInput,
     ToolError, ToolOutput, UpdatePostInput,
 )
@@ -42,8 +42,9 @@ CONTRACTS: dict[str, tuple[type[BaseModel], Any, str]] = {
     "list_posts": (ListPostsInput, PostPage, "List saved post summaries, with optional status filter and pagination."),
     "get_post": (PostInput, PostResponse, "Read one saved post and its scheduling history. A scheduled status does not prove publication."),
     "create_post": (CreatePostInput, PostResponse, "Save a draft with the user's caption, one ChatGPT image file and an explicit future local time. Reuse request_key when retrying this same intended post."),
+    "create_video_post": (CreateVideoPostInput, PostResponse, "Save a private draft with a caption and one attached MP4 (H.264, optional AAC, at most 20 MiB). If ChatGPT cannot pass the video, upload it in the dashboard and use the saved post ID. Reuse request_key for the same draft."),
     "update_post": (UpdatePostInput, PostResponse, "Modify an eligible saved draft's caption or time. Scheduled, in-progress and uncertain-outcome posts cannot be edited."),
-    "schedule_post": (SchedulePostInput, ScheduleResponse, "Schedule an existing post. Defaults to dry_run. For facebook_schedule, first show the exact caption, image, Page and local time and obtain the user's approval. Both backend switches must be enabled. Never retry an uncertain write; retrieve the existing post instead."),
+    "schedule_post": (SchedulePostInput, ScheduleResponse, "Schedule an existing post. Defaults to dry_run. For facebook_schedule, first show the exact caption, media, Page and local time and obtain the user's approval. For video only, set confirm_video=true after approval. The backend publishing gates must be enabled. Never retry an uncertain write."),
     "create_and_schedule_post": (CreateAndScheduleInput, PostAndSchedule, "Create and schedule exactly one intended post using a stable request_key. Defaults to dry_run. Obtain approval of the exact content, Page and time before facebook_schedule. Replays reuse the saved outcome and never initiate a second write."),
 }
 SCHEMES = [{"type": "oauth2", "scopes": ["email"]}]
@@ -58,6 +59,8 @@ def tool_descriptors() -> list[Tool]:
         meta: dict[str, Any] = {"securitySchemes": SCHEMES}
         if name in {"create_post", "create_and_schedule_post"}:
             meta["openai/fileParams"] = ["image"]
+        if name == "create_video_post":
+            meta["openai/fileParams"] = ["video"]
         result.append(Tool(
             name=name, title=name.replace("_", " ").title(), description=description,
             inputSchema=input_model.model_json_schema(),
@@ -65,7 +68,7 @@ def tool_descriptors() -> list[Tool]:
             annotations=ToolAnnotations(
                 readOnlyHint=read_only, destructiveHint=publishing or name == "update_post",
                 openWorldHint=publishing,
-                idempotentHint=read_only or name in {"create_post", "create_and_schedule_post"},
+                idempotentHint=read_only or name in {"create_post", "create_and_schedule_post", "create_video_post"},
             ),
             # The Python SDK's standard Tool type carries host extensions in _meta.
             _meta=meta,
@@ -105,14 +108,14 @@ class SchedulerTools:
             bridge = bool(self.settings.mcp_bridge_client_id) and actor.client_id == self.settings.mcp_bridge_client_id
             bridge_live = bridge and self.settings.mcp_bridge_allow_live_scheduling and self.settings.publishing_enabled
             if bridge:
-                allowed = {"get_system_status", "test_facebook_connection", "list_posts", "get_post", "create_post", "schedule_post"}
+                allowed = {"get_system_status", "test_facebook_connection", "list_posts", "get_post", "create_post", "create_video_post", "schedule_post"}
                 mode = raw.get("mode", "dry_run")
                 schedule_allowed = mode == "dry_run" or (mode == "facebook_schedule" and bridge_live)
                 if name not in allowed or (name == "schedule_post" and not schedule_allowed):
                     raise AppError(code="BRIDGE_ACTION_FORBIDDEN", message="This action is not enabled for the bridge client.", status_code=403)
             args = CONTRACTS[name][0].model_validate(raw)
             with get_session_factory(self.settings.require_database_url())() as session:
-                if isinstance(args, CreatePostInput):
+                if isinstance(args, (CreatePostInput, CreateVideoPostInput)):
                     output = await self._create(session, actor.subject, name, args)
                 else:
                     data = await self._execute(session, name, args)
@@ -152,12 +155,12 @@ class SchedulerTools:
         if name == "update_post":
             return posts.update_post(args.post_id, PostUpdateRequest(**args.model_dump(exclude={"post_id"})))
         if name == "schedule_post":
-            return await SchedulingService(session, self.settings, media_service=self.media).schedule_post(args.post_id, requested_mode=args.mode)
+            return await SchedulingService(session, self.settings, media_service=self.media).schedule_post(args.post_id, requested_mode=args.mode, video_confirmed=args.confirm_video is True)
         raise AppError(code="UNKNOWN_TOOL", message="This tool is not available.", status_code=404)
 
-    def _reserve(self, session: Session, actor: str, name: str, args: CreatePostInput) -> tuple[McpOperation, bool]:
-        payload = args.model_dump(exclude={"request_key", "image"})
-        payload["file_id"] = args.image.file_id
+    def _reserve(self, session: Session, actor: str, name: str, args: CreatePostInput | CreateVideoPostInput) -> tuple[McpOperation, bool]:
+        payload = args.model_dump(exclude={"request_key", "image", "video"})
+        payload["file_id"] = (args.video if isinstance(args, CreateVideoPostInput) else args.image).file_id
         fingerprint = hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
         operation = McpOperation(operator_id=actor, tool=name, request_key=args.request_key, fingerprint=fingerprint)
         session.add(operation)
@@ -176,7 +179,7 @@ class SchedulerTools:
                 raise AppError(code="REQUEST_KEY_CONFLICT", message="This request key belongs to different content. Inspect the original post.", status_code=409)
             return previous, False
 
-    async def _create(self, session: Session, actor: str, name: str, args: CreatePostInput) -> ToolOutput:
+    async def _create(self, session: Session, actor: str, name: str, args: CreatePostInput | CreateVideoPostInput) -> ToolOutput:
         operation, fresh = self._reserve(session, actor, name, args)
         if not fresh:
             if operation.response is not None:
@@ -187,7 +190,10 @@ class SchedulerTools:
         try:
             if isinstance(args, CreateAndScheduleInput) and args.mode is SchedulingMode.FACEBOOK_SCHEDULE and not self.settings.publishing_enabled:
                 raise AppError(code="PUBLISHING_DISABLED", message="Real scheduling requires both backend publishing switches.", status_code=503)
-            upload = await self.downloader.download(args.image)
+            if isinstance(args, CreateVideoPostInput):
+                upload = await self.downloader.download(args.video, video=True)
+            else:
+                upload = await self.downloader.download(args.image)
             # Keep upload, committed post association, scheduling and result recording together
             # through a normal client disconnect. A killed process leaves the key reserved.
             with anyio.CancelScope(shield=True):
@@ -195,6 +201,7 @@ class SchedulerTools:
                     session, self.settings, self.media, caption=args.caption,
                     scheduled_for_local=args.scheduled_for_local, timezone=args.timezone,
                     image=upload, before_commit=lambda post_id: setattr(operation, "post_id", post_id),
+                    is_video=isinstance(args, CreateVideoPostInput),
                 )
                 if isinstance(args, CreateAndScheduleInput):
                     schedule = await SchedulingService(session, self.settings, media_service=self.media).schedule_post(post.id, requested_mode=args.mode)

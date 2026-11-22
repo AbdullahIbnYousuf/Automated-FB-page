@@ -58,12 +58,13 @@ export async function apiRequest<T>(
   return (await response.json()) as T;
 }
 
-export async function apiBlobRequest(path: string): Promise<Blob> {
+export async function apiBlobRequest(path: string, video = false, signal?: AbortSignal): Promise<Blob> {
   const accessToken = await getAccessToken();
   const response = await fetch(`${API_BASE_URL}${path}`, {
     cache: "no-store",
+    signal,
     headers: {
-      Accept: "image/jpeg,image/png",
+      Accept: video ? "video/mp4" : "image/jpeg,image/png",
       Authorization: `Bearer ${accessToken}`,
     },
   });
@@ -72,7 +73,7 @@ export async function apiBlobRequest(path: string): Promise<Blob> {
       await supabase?.auth.signOut({ scope: "local" });
     }
     throw new ApiError(
-      "The image could not be loaded.",
+      video ? "The video could not be loaded." : "The image could not be loaded.",
       "MEDIA_UNAVAILABLE",
       response.status,
     );

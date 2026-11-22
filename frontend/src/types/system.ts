@@ -20,6 +20,7 @@ export interface SystemStatus {
   publish_mode: PublishMode;
   automation_enabled: boolean;
   publishing_enabled: boolean;
+  max_video_upload_bytes?: number;
   timezone: string;
   graph_api_version: string;
   facebook: FacebookConfigurationStatus;

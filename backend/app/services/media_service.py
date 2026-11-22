@@ -1,4 +1,4 @@
-"""Validated image handling backed by a private Supabase Storage bucket."""
+"""Validated post media backed by private Supabase Storage buckets."""
 
 import re
 from dataclasses import dataclass
@@ -7,12 +7,14 @@ from pathlib import Path
 from urllib.parse import quote
 from uuid import uuid4
 
+import anyio
 import httpx
 from fastapi import UploadFile
 from PIL import Image, UnidentifiedImageError
 
 from app.config import Settings
 from app.services.errors import AppError
+from app.services.video_validation import VIDEO_MIME_TYPE, validate_video, video_too_large
 
 
 ALLOWED_IMAGES = {
@@ -21,15 +23,18 @@ ALLOWED_IMAGES = {
     ".png": ("image/png", "PNG"),
 }
 OBJECT_PATH_PATTERN = re.compile(
-    r"^posts/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.(?:jpg|jpeg|png)$"
+    r"^posts/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.(?:jpg|jpeg|png|mp4)$"
 )
 
 
 @dataclass(frozen=True)
-class StoredImage:
+class StoredMedia:
     object_path: str
     mime_type: str
     original_filename: str
+
+
+StoredImage = StoredMedia  # Existing image interfaces and test helpers.
 
 
 @dataclass(frozen=True)
@@ -71,8 +76,41 @@ class MediaService:
             original_filename=display_name or f"upload{extension}",
         )
 
+    async def store_video_upload(self, upload: UploadFile) -> StoredMedia:
+        filename = Path((upload.filename or "").replace("\\", "/")).name
+        if Path(filename).suffix.lower() != ".mp4" or upload.content_type not in {
+            VIDEO_MIME_TYPE, "application/octet-stream", None,
+        }:
+            raise AppError(code="UNSUPPORTED_VIDEO", message="Choose one MP4 video.", status_code=422)
+        limit = self.settings.max_video_upload_bytes
+        content = await upload.read(limit + 1)
+        if len(content) > limit:
+            raise video_too_large(limit)
+        await anyio.to_thread.run_sync(validate_video, content)
+        object_path = f"posts/{uuid4()}.mp4"
+        try:
+            with anyio.fail_after(self.settings.supabase_request_timeout_seconds):
+                response = await self._request(
+                    "POST", self._object_url(object_path),
+                    headers={"Content-Type": VIDEO_MIME_TYPE, "x-upsert": "false"},
+                    content=content,
+                )
+        except (AppError, TimeoutError) as exc:
+            # Storage may have accepted the object despite the failed response.
+            # Only our unique, non-upserting path is eligible for cleanup.
+            with anyio.CancelScope(shield=True):
+                await self.delete_object(object_path)
+            raise AppError(code="VIDEO_STORAGE_ERROR", message="The video could not be stored privately.", status_code=503) from exc
+        if response.status_code == 413:
+            raise AppError(code="VIDEO_STORAGE_LIMIT", message="Private Storage rejected the video size.", status_code=413)
+        if not response.is_success:
+            raise AppError(code="VIDEO_STORAGE_ERROR", message="The video could not be stored privately.", status_code=503)
+        return StoredMedia(object_path, VIDEO_MIME_TYPE, filename[-255:])
+
     async def get_object(self, object_path: str) -> StoredObject:
         self.validate_object_path(object_path)
+        if object_path.endswith(".mp4"):
+            return await self._get_video_object(object_path)
         response = await self._request("GET", self._object_url(object_path))
         if response.status_code == 404:
             raise AppError(
@@ -95,6 +133,33 @@ class MediaService:
             ).split(";", 1)[0],
         )
 
+    async def _get_video_object(self, object_path: str) -> StoredObject:
+        limit = self.settings.max_video_upload_bytes
+        timeout = self.settings.supabase_request_timeout_seconds
+        try:
+            with anyio.fail_after(timeout):
+                async with httpx.AsyncClient(timeout=timeout, trust_env=False) as client:
+                    async with client.stream(
+                        "GET", self._object_url(object_path),
+                        headers=self._storage_headers({"Accept-Encoding": "identity"}),
+                    ) as response:
+                        if response.status_code == 404:
+                            raise AppError(code="MEDIA_NOT_FOUND", message="Video not found.", status_code=404)
+                        response.raise_for_status()
+                        mime = response.headers.get("content-type", "").split(";", 1)[0]
+                        if mime != VIDEO_MIME_TYPE or response.headers.get("content-encoding", "identity").lower() != "identity":
+                            raise AppError(code="INVALID_VIDEO", message="Stored video type is invalid.", status_code=422)
+                        content = bytearray()
+                        async for chunk in response.aiter_bytes(chunk_size=65536):
+                            if len(content) + len(chunk) > limit:
+                                raise video_too_large(limit)
+                            content.extend(chunk)
+                        if not content:
+                            raise AppError(code="MEDIA_NOT_FOUND", message="Video not found.", status_code=404)
+                        return StoredObject(bytes(content), mime)
+        except (httpx.HTTPError, TimeoutError) as exc:
+            raise AppError(code="VIDEO_STORAGE_ERROR", message="The video is temporarily unavailable.", status_code=503) from exc
+
     async def object_exists(self, object_path: str) -> bool:
         try:
             await self.get_object(object_path)
@@ -113,6 +178,11 @@ class MediaService:
         """Revalidate private bytes before they cross the Meta write boundary."""
 
         stored = await self.get_object(object_path)
+        if expected_mime_type == VIDEO_MIME_TYPE:
+            if stored.mime_type != VIDEO_MIME_TYPE or len(stored.content) > self.settings.max_video_upload_bytes:
+                raise AppError(code="INVALID_VIDEO", status_code=422, message="The stored video type or size is invalid.")
+            await anyio.to_thread.run_sync(validate_video, stored.content)
+            return stored
         expected_format = {
             "image/jpeg": "JPEG",
             "image/png": "PNG",
@@ -166,7 +236,7 @@ class MediaService:
             self.validate_object_path(object_path)
             await self._request(
                 "DELETE",
-                self._bucket_url(),
+                self._bucket_url(object_path),
                 json={"prefixes": [object_path]},
             )
         except AppError:
@@ -176,7 +246,7 @@ class MediaService:
     def validate_object_path(object_path: str) -> None:
         if not OBJECT_PATH_PATTERN.fullmatch(object_path):
             raise AppError(
-                code="MEDIA_NOT_FOUND", message="Image not found.", status_code=404
+                code="MEDIA_NOT_FOUND", message="Media not found.", status_code=404
             )
 
     async def _validate_upload(
@@ -273,27 +343,28 @@ class MediaService:
 
     def _object_url(self, object_path: str) -> str:
         self.validate_object_path(object_path)
-        base_url = self.settings.require_supabase_url()
-        bucket = quote(self.settings.supabase_storage_bucket, safe="")
         encoded_path = quote(object_path, safe="/")
-        return f"{base_url}/storage/v1/object/{bucket}/{encoded_path}"
+        return f"{self._bucket_url(object_path)}/{encoded_path}"
 
-    def _bucket_url(self) -> str:
+    def _bucket_url(self, object_path: str) -> str:
         base_url = self.settings.require_supabase_url()
-        bucket = quote(self.settings.supabase_storage_bucket, safe="")
+        bucket_name = self.settings.supabase_video_bucket if object_path.endswith(".mp4") else self.settings.supabase_storage_bucket
+        bucket = quote(bucket_name, safe="")
         return f"{base_url}/storage/v1/object/{bucket}"
 
-    async def _request(self, method: str, url: str, **kwargs: object) -> httpx.Response:
+    def _storage_headers(self, supplied_headers: dict[str, str]) -> dict[str, str]:
         secret_key = self.settings.require_supabase_secret_key()
-        supplied_headers = dict(kwargs.pop("headers", {}))
-        headers = {
+        return {
             "apikey": secret_key,
             "Authorization": f"Bearer {secret_key}",
             **supplied_headers,
         }
+
+    async def _request(self, method: str, url: str, **kwargs: object) -> httpx.Response:
+        headers = self._storage_headers(dict(kwargs.pop("headers", {})))
         try:
             async with httpx.AsyncClient(
-                timeout=self.settings.supabase_request_timeout_seconds
+                timeout=self.settings.supabase_request_timeout_seconds, trust_env=False,
             ) as client:
                 return await client.request(method, url, headers=headers, **kwargs)
         except httpx.HTTPError as exc:

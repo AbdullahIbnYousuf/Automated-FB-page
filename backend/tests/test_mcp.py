@@ -124,18 +124,41 @@ def test_initialize_discovery_file_schema_and_all_tools(mcp_client):
     assert result.json()["result"]["serverInfo"]["name"] == "The Test Lab Operations"
     response = rpc(mcp_client, "tools/list")
     tools = response.json()["result"]["tools"]
-    assert len(tools) == 8
+    assert len(tools) == 9
     for descriptor in tools:
         assert descriptor["_meta"]["securitySchemes"] == [{"type": "oauth2", "scopes": ["email"]}]
         assert "outputSchema" in descriptor
-        if descriptor["name"] in {"create_post", "create_and_schedule_post"}:
-            assert descriptor["_meta"]["openai/fileParams"] == ["image"]
+        if descriptor["name"] in {"create_post", "create_and_schedule_post", "create_video_post"}:
+            field = "video" if descriptor["name"] == "create_video_post" else "image"
+            assert descriptor["_meta"]["openai/fileParams"] == [field]
             file_schema = descriptor["inputSchema"]["$defs"]["ChatGPTFile"]
             assert set(file_schema["properties"]) == {"download_url", "file_id", "mime_type", "file_name"}
             assert set(file_schema["required"]) == {"download_url", "file_id"}
             assert all(p["type"] == "string" for p in file_schema["properties"].values())
     assert call(mcp_client, "get_system_status")["data"]["publishing_enabled"] is False
     assert call(mcp_client, "test_facebook_connection")["data"]["status"] == "not_configured"
+
+
+@pytest.mark.parametrize("bridge", [False, True])
+def test_video_tool_attachment_and_replay(mcp_client, fake_media, monkeypatch, make_video, bridge):
+    if bridge:
+        monkeypatch.setattr(get_settings(), "mcp_bridge_client_id", "chatgpt-client")
+        assert call(mcp_client, "get_system_status")["data"]["bridge_client_restricted"]
+    async def download(file, *, video=False):
+        assert video and file.file_id == "file-test"
+        return UploadFile(file=BytesIO(make_video()), filename="test.mp4", headers={"content-type": "video/mp4"})
+
+    monkeypatch.setattr(mcp_host.tools.downloader, "download", download)
+    args = create_args()
+    args["video"] = args.pop("image")
+    draft = call(mcp_client, "create_video_post", args)
+    assert draft["ok"] and draft["data"]["video_url"].endswith(".mp4")
+    args["video"]["download_url"] = "https://files.oaiusercontent.com/fresh?sig=hidden"
+    replay = call(mcp_client, "create_video_post", args)
+    assert replay["replayed"] and replay["data"]["id"] == draft["data"]["id"]
+    assert len(fake_media.objects) == 1
+    result = call(mcp_client, "schedule_post", {"post_id": draft["data"]["id"]})["data"]
+    assert result["simulated"] and not result["external_request_made"]
 
 
 def test_all_post_tools_dry_run_and_replay(mcp_client, fake_media):

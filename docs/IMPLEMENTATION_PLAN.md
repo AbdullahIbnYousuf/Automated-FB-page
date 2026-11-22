@@ -19,6 +19,12 @@
 
 ## Principle
 
+Video upload extension: private MP4 drafts, authenticated playback, and
+dry-run scheduling are implemented in source. Restore and verify Supabase and
+Render before applying the migration or deploying. The first hosted trial must
+save and dry-run a short MP4; Bridge MP4 handoff and live Meta acceptance are
+separate checks. Keep production publishing settings unchanged for upload QA.
+
 Build vertically in small, testable phases. Do not build the entire roadmap in one Codex prompt.
 
 Every phase should leave the repository runnable and understandable.
