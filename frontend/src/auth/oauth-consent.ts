@@ -3,7 +3,10 @@ import type { OAuthAuthorizationDetails, OAuthRedirect, SupabaseClient } from "@
 type ConsentProvider = Pick<SupabaseClient["auth"]["oauth"], "getAuthorizationDetails" | "approveAuthorization" | "denyAuthorization">;
 type VerifyOperator = () => Promise<unknown>;
 
-const BRIDGE_CALLBACK = "https://facebook-scheduler-bridge.sassypear13.chatgpt.site/oauth/callback";
+const BRIDGE_CALLBACKS = new Set([
+  "https://facebook-scheduler-bridge.smolder-caveat-2a.chatgpt.site/oauth/callback",
+  "https://facebook-scheduler-bridge.sassypear13.chatgpt.site/oauth/callback",
+]);
 
 // Only call with a redirect returned by Supabase after operator verification.
 // Supabase binds it to the client's exact registered URI; PKCE/state are enforced
@@ -14,7 +17,7 @@ export function oauthRedirect(value: string): string {
     && (url.pathname.startsWith("/connector/oauth/") || url.pathname === "/connector_platform_oauth_redirect");
   // Compare the literal callback before response parameters: URL parsing alone
   // normalizes dot segments, backslashes, default ports and control characters.
-  const bridge = value.split("?", 1)[0] === BRIDGE_CALLBACK && !value.includes("#");
+  const bridge = BRIDGE_CALLBACKS.has(value.split("?", 1)[0]) && !value.includes("#");
   const native = value.startsWith("http://127.0.0.1:") && url.protocol === "http:"
     && url.hostname === "127.0.0.1" && Number(url.port) >= 1024 && Number(url.port) <= 65535
     && /^\/callback(?:\/[A-Za-z0-9_-]{8,128})?$/.test(url.pathname);

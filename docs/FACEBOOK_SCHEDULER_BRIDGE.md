@@ -83,7 +83,14 @@ Dashboard and other authorized clients retain their existing mode selection.
 
 ## Consent callback
 
-The one additional callback is exactly:
+The current Sites publication uses this exact callback:
+
+```text
+https://facebook-scheduler-bridge.smolder-caveat-2a.chatgpt.site/oauth/callback
+```
+
+The original Sites alias redirects to the current publication. The exact old
+callback remains on the allowlist for compatibility:
 
 ```text
 https://facebook-scheduler-bridge.sassypear13.chatgpt.site/oauth/callback

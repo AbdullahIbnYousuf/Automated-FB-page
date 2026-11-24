@@ -142,11 +142,17 @@ test("password setup retains only the consent ID and strips recovery parameters"
 
 test("bridge callback is exact and preserves existing redirect restrictions", () => {
   const callback = "https://facebook-scheduler-bridge.sassypear13.chatgpt.site/oauth/callback";
+  const current = "https://facebook-scheduler-bridge.smolder-caveat-2a.chatgpt.site/oauth/callback";
   assert.equal(oauthRedirect(callback + "?code=single-use&state=test"), callback + "?code=single-use&state=test");
+  assert.equal(oauthRedirect(current + "?code=single-use&state=test"), current + "?code=single-use&state=test");
+  assert.equal(oauthRedirect(current + "?error=access_denied&state=test"), current + "?error=access_denied&state=test");
   for (const invalid of [
     "http://facebook-scheduler-bridge.sassypear13.chatgpt.site/oauth/callback",
     "https://facebook-scheduler-bridge.sassypear13.chatgpt.site.evil.example/oauth/callback",
     "https://other.sassypear13.chatgpt.site/oauth/callback",
+    "https://facebook-scheduler-bridge.smolder-caveat-2a.chatgpt.site.evil.example/oauth/callback",
+    "https://other.smolder-caveat-2a.chatgpt.site/oauth/callback",
+    current + "/", current + "#",
     "https://facebook-scheduler-bridge.sassypear13.chatgpt.site/other",
     callback + "/", callback + "#secret",
     callback + "#", callback + "?code=test#",
@@ -191,7 +197,7 @@ test("bridge consent verifies the operator before details, approval and denial",
 });
 
 test("already granted bridge consent follows only the provider's validated callback", async () => {
-  const destination = "https://facebook-scheduler-bridge.sassypear13.chatgpt.site/oauth/callback?code=test&state=test";
+  const destination = "https://facebook-scheduler-bridge.smolder-caveat-2a.chatgpt.site/oauth/callback?code=test&state=test";
   const calls = [];
   const result = await loadConsent(id, async () => calls.push("verify"), {
     getAuthorizationDetails: async () => {

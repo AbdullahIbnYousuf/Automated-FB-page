@@ -272,8 +272,9 @@ that client token are denied. No startup task or worker processes existing posts
 The dashboard and existing ChatGPT client grants are unchanged. The Sites
 credential vault contains encrypted delegated tokens and one-use PKCE state only;
 all posts, attempts, images and Meta credentials remain in this backend/Supabase.
-The existing consent UI permits only this exact additional callback:
-https://facebook-scheduler-bridge.sassypear13.chatgpt.site/oauth/callback
+The existing consent UI permits only the exact current and legacy Bridge callbacks:
+https://facebook-scheduler-bridge.smolder-caveat-2a.chatgpt.site/oauth/callback and
+https://facebook-scheduler-bridge.sassypear13.chatgpt.site/oauth/callback.
 Existing callback and operator verification restrictions remain enforced.
 See [bridge contract and remaining setup](FACEBOOK_SCHEDULER_BRIDGE.md) for the
 caller-specific status flag, exact callback validation and local test evidence.
