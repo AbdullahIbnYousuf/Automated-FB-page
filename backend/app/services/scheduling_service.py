@@ -18,7 +18,7 @@ from app.models.post import (
     SchedulingAttempt,
     SchedulingMode,
 )
-from app.schemas.post import ScheduleResponse
+from app.schemas.post import ScheduleResponse, VideoScheduleApproval
 from app.services.dry_run_scheduler import DryRunScheduler
 from app.services.errors import AppError
 from app.services.facebook_scheduler import FacebookScheduler
@@ -53,8 +53,20 @@ class SchedulingService:
     async def schedule_post(
         self, post_id: str, *, requested_mode: SchedulingMode | None = None,
         video_confirmed: bool = False,
+        dashboard_video_approval: VideoScheduleApproval | None = None,
     ) -> ScheduleResponse:
         mode = self._selected_mode(requested_mode)
+        review_conditions = []
+        if dashboard_video_approval is not None:
+            self._validate_dashboard_video_approval(dashboard_video_approval)
+            # Match the version in the same atomic claim that excludes edits and
+            # duplicate requests. Never approve the replacement of a reviewed draft.
+            review_conditions = [
+                Post.video_object_path.is_not(None),
+                Post.updated_at == dashboard_video_approval.reviewed_updated_at,
+            ]
+            video_confirmed = True
+
         now = datetime.now(UTC)
         claimed_id = self.session.execute(
             update(Post)
@@ -65,6 +77,7 @@ class SchedulingService:
                     Post.last_error_code.is_(None),
                     Post.last_error_code != UNKNOWN_OUTCOME_CODE,
                 ),
+                *review_conditions,
             )
             .values(status=PostStatus.SCHEDULING, updated_at=now)
             .returning(Post.id)
@@ -72,14 +85,14 @@ class SchedulingService:
 
         if claimed_id is None:
             current = self.session.execute(
-                select(Post.status, Post.last_error_code).where(Post.id == post_id)
+                select(Post.status, Post.last_error_code, Post.video_object_path).where(Post.id == post_id)
             ).one_or_none()
             self.session.rollback()
             if current is None:
                 raise AppError(
                     code="POST_NOT_FOUND", message="Post not found.", status_code=404
                 )
-            current_status, last_error_code = current
+            current_status, last_error_code, video_path = current
             if current_status is PostStatus.SCHEDULING:
                 raise AppError(
                     code="DUPLICATE_ATTEMPT_RISK",
@@ -95,6 +108,10 @@ class SchedulingService:
                     ),
                     status_code=409,
                 )
+            if dashboard_video_approval is not None and current_status in CLAIMABLE_STATES:
+                if not video_path:
+                    raise AppError(code="VIDEO_REQUIRED", message="Only a saved video can use this action.", status_code=422)
+                raise AppError(code="VIDEO_REVIEW_STALE", message="The draft changed. Review the current video, caption, Page and time again.", status_code=409)
             raise AppError(
                 code="INVALID_POST_STATE",
                 message="This post cannot be scheduled in its current state.",
@@ -184,6 +201,17 @@ class SchedulingService:
                 )
             self._record_failure(post, attempt, internal_error)
             raise internal_error from exc
+
+    def _validate_dashboard_video_approval(self, approval: VideoScheduleApproval) -> None:
+        if not self.settings.video_facebook_scheduling_enabled:
+            raise AppError(code="VIDEO_PUBLISHING_DISABLED", message="Real video scheduling is disabled.", status_code=503)
+        page_id = self.settings.video_scheduling_page_id
+        if page_id is None:
+            raise AppError(code="FACEBOOK_CONFIGURATION_REQUIRED", message="Configure the Facebook Page before scheduling a video.", status_code=503)
+        if not approval.confirmed:
+            raise AppError(code="VIDEO_APPROVAL_REQUIRED", message="Confirm the exact video, caption, Page and local time before submitting.", status_code=422)
+        if approval.reviewed_page_id != page_id:
+            raise AppError(code="VIDEO_REVIEW_STALE", message="The configured Facebook Page changed. Review the current Page again.", status_code=409)
 
     def _selected_mode(self, requested_mode: SchedulingMode | None = None) -> SchedulingMode:
         if requested_mode is SchedulingMode.DRY_RUN:

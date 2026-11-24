@@ -1,11 +1,12 @@
 export function formatZonedDateTime(
   utcIso: string,
   timezone: string,
+  showSeconds = false,
 ): string {
   return new Intl.DateTimeFormat("en-GB", {
     timeZone: timezone,
     dateStyle: "medium",
-    timeStyle: "short",
+    timeStyle: showSeconds ? "medium" : "short",
     hour12: true,
   }).format(new Date(utcIso));
 }

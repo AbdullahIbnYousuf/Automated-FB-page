@@ -172,12 +172,17 @@ The backend must:
 1. validate the local post
 2. verify required Facebook configuration exists
 3. validate the scheduled time against Meta's supported scheduling window
-4. upload/create the scheduled Page photo post through the official Graph API flow
+4. upload/create the scheduled Page photo or confirmed video post through the official Graph API flow
 5. persist the returned identifier
 6. transition the local status to `scheduled`
 7. on failure, persist a safe error and transition to `failed`
 
 Meta's current Graph API documentation supports Page scheduled posts with `scheduled_publish_time`; Page photo scheduling requires the relevant unpublished/scheduling parameters. Implementation must follow the current official Meta documentation at coding time rather than relying on guessed request shapes.
+
+The saved-video dashboard action shows the exact video, caption, configured Page
+ID and local time before the operator confirms. The backend binds that approval
+to the reviewed draft version and Page, requires the separate default-off video
+switch, and refuses stale approvals. Immediate video posting is not supported.
 
 ## 9. Validation Requirements
 

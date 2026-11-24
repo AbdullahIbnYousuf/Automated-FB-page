@@ -17,6 +17,7 @@ from app.schemas.post import (
     PostResponse,
     PostUpdateRequest,
     ScheduleResponse,
+    VideoScheduleApproval,
 )
 from app.services.errors import AppError
 from app.services.media_service import MediaService
@@ -147,3 +148,16 @@ async def schedule_post(
     return await SchedulingService(
         session, settings, media_service=media_service
     ).schedule_post(post_id, requested_mode=SchedulingMode.DRY_RUN if dry_run else None)
+
+
+@router.post("/{post_id}/schedule-video", response_model=ScheduleResponse)
+async def schedule_video(
+    post_id: str,
+    approval: VideoScheduleApproval,
+    session: DatabaseSession,
+    settings: ApplicationSettings,
+    media_service: ApplicationMedia,
+) -> ScheduleResponse:
+    return await SchedulingService(session, settings, media_service=media_service).schedule_post(
+        post_id, requested_mode=SchedulingMode.FACEBOOK_SCHEDULE, dashboard_video_approval=approval,
+    )

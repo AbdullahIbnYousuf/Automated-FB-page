@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, StrictBool
 
 from app.models.post import AttemptResult, PostStatus, SchedulingMode
 
@@ -47,6 +47,14 @@ class PostUpdateRequest(BaseModel):
     caption: str | None = None
     scheduled_for_local: str | None = None
     timezone: str | None = None
+
+
+class VideoScheduleApproval(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    confirmed: StrictBool
+    reviewed_updated_at: AwareDatetime
+    reviewed_page_id: str = Field(pattern=r"^[0-9]+$", max_length=64)
 
 
 class ScheduleResponse(BaseModel):

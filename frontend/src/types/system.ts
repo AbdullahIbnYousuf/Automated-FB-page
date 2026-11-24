@@ -21,6 +21,8 @@ export interface SystemStatus {
   automation_enabled: boolean;
   publishing_enabled: boolean;
   max_video_upload_bytes?: number;
+  video_publishing_enabled?: boolean;
+  video_scheduling_page_id?: string | null;
   timezone: string;
   graph_api_version: string;
   facebook: FacebookConfigurationStatus;

@@ -95,8 +95,8 @@ export function NewPostPage() {
         <span className="eyebrow">Local post workspace</span>
         <h2>Prepare a Page post</h2>
         <p>
-          Save one image or video as a private draft. You can test video scheduling
-          here with a dry run; nothing will be sent to Facebook.
+          Save one image or video as a private draft. For video, run a dry run here,
+          or open the saved draft to review live scheduling when it is enabled.
         </p>
       </section>
 

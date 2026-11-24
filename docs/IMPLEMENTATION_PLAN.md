@@ -8,7 +8,7 @@
 - Phase 3: complete
 - Hosted Migration + Deployment: complete; Supabase, Render, Cloudflare, and single-operator authentication are live
 - Phase 4: complete; hosted Page identity verified for The Test Lab
-- Phase 5: implemented; guarded scheduled-photo code, tests, and hosted dry-run deployment complete after deployment verification
+- Phase 5: guarded photo scheduling implemented; dashboard video scheduling uses a separate default-off switch and exact draft review. Hosted video draft playback and simulation are operator-confirmed; live Meta video acceptance is separate and pending.
 - Phase 6 and later: not started
 - Private Sites bridge live capability: separately controlled by
   `MCP_BRIDGE_ALLOW_LIVE_SCHEDULING` plus both existing publishing switches.

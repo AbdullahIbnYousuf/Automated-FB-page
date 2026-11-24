@@ -94,6 +94,17 @@ class Settings(BaseSettings):
         return bool(self.facebook_page_id and self.facebook_page_id.strip())
 
     @property
+    def video_scheduling_page_id(self) -> str | None:
+        page_id = (self.facebook_page_id or "").strip()
+        if (
+            self.publishing_enabled and self.video_facebook_scheduling_enabled
+            and self.facebook_token_configured and page_id.isascii() and page_id.isdecimal()
+            and len(page_id) <= 64
+        ):
+            return page_id
+        return None
+
+    @property
     def facebook_token_configured(self) -> bool:
         if self.facebook_page_access_token is None:
             return False

@@ -288,7 +288,7 @@ form fields; the media service validates the MP4 container and streams and write
 to the private `post-videos` bucket (20 MiB, `video/mp4`). A post references either
 its existing image columns or `video_object_path`. A `video_url` is an
 authenticated backend route, not a Supabase URL. The dashboard uses a private
-blob URL for preview and requests only dry runs for video.
+blob URL for preview. Video simulation always uses `?dry_run=true`.
 
 The scheduler MCP adds `create_video_post` with a `video` file reference and
 the existing durable request-key contract. It uses the same creation and storage
@@ -302,3 +302,11 @@ The video Meta branch uses `POST /{version}/{page_id}/videos` on
 claim and unknown-outcome lock apply. A new disabled-by-default video gate and
 `confirm_video=true` are required for real MCP submission. A returned video ID
 means accepted for scheduling; processing and eventual publication are not verified.
+
+The dashboard's separate authenticated `POST /api/posts/{id}/schedule-video`
+requires an explicit JSON boolean, the reviewed draft's `updated_at`, and the
+exact confirmed Page ID. The authenticated REST status response provides the
+non-secret Page ID only when live video and Page configuration are enabled.
+The scheduling claim compares the draft version and media type atomically before
+creating an attempt, so edits and concurrent submissions cannot replace the
+reviewed post. Real mode is explicit and cannot silently become simulated.

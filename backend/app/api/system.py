@@ -13,6 +13,14 @@ router = APIRouter(
 )
 
 
-@router.get("/status", response_model=SystemStatusResponse)
-async def system_status() -> SystemStatusResponse:
-    return status_snapshot(get_settings())
+class DashboardSystemStatusResponse(SystemStatusResponse):
+    video_scheduling_page_id: str | None
+
+
+@router.get("/status", response_model=DashboardSystemStatusResponse)
+async def system_status() -> DashboardSystemStatusResponse:
+    settings = get_settings()
+    return DashboardSystemStatusResponse(
+        **status_snapshot(settings).model_dump(),
+        video_scheduling_page_id=settings.video_scheduling_page_id,
+    )

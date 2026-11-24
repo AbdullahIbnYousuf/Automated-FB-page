@@ -9,11 +9,13 @@ from pydantic import SecretStr
 from app.config import PublishMode, get_settings
 from app.database import get_session_factory
 from app.integrations.facebook.client import FacebookClient
+from app.integrations.facebook.errors import FacebookWriteError, FacebookWriteErrorCode
 from app.models.post import SchedulingMode
 from app.services.errors import AppError
 from app.services.facebook_scheduler import FacebookScheduler
 from app.services.post_service import PostService
 from app.services.scheduling_service import SchedulingService
+from tests.helpers import image_bytes
 
 
 def fields():
@@ -59,6 +61,102 @@ def test_rejects_invalid_wrong_codec_and_oversized_videos(client, fake_media, ma
 def test_upload_and_video_preview_require_authentication(unauthenticated_client, make_video):
     assert upload(unauthenticated_client, make_video()).status_code == 401
     assert unauthenticated_client.get("/api/media/posts/01234567-0000-4000-8000-0123456789ab.mp4").status_code == 401
+    assert unauthenticated_client.post("/api/posts/unknown/schedule-video", json={}).status_code == 401
+
+
+@pytest.fixture
+def dashboard_live_video(monkeypatch):
+    settings = get_settings()
+    for key, value in {
+        "publish_mode": PublishMode.FACEBOOK_SCHEDULE, "automation_enabled": True,
+        "video_facebook_scheduling_enabled": True,
+        "facebook_page_id": "1234", "facebook_page_access_token": SecretStr("fake-video-token"),
+    }.items():
+        monkeypatch.setattr(settings, key, value)
+    return settings
+
+
+def approval(record, **overrides):
+    return {"confirmed": True, "reviewed_updated_at": record["updated_at"], "reviewed_page_id": "1234", **overrides}
+
+
+@pytest.mark.parametrize("setting,value,code", [
+    ("video_facebook_scheduling_enabled", False, "VIDEO_PUBLISHING_DISABLED"),
+    ("automation_enabled", False, "PUBLISHING_DISABLED"),
+    ("publish_mode", PublishMode.DRY_RUN, "PUBLISHING_DISABLED"),
+    ("facebook_page_access_token", None, "FACEBOOK_CONFIGURATION_REQUIRED"),
+])
+def test_dashboard_live_gates_fail_closed(client, monkeypatch, make_video, dashboard_live_video, setting, value, code):
+    def forbidden(*args, **kwargs):
+        pytest.fail("disabled live scheduling reached Meta")
+
+    monkeypatch.setattr(FacebookClient, "schedule_page_video", forbidden)
+    draft = upload(client, make_video()).json()
+    monkeypatch.setattr(dashboard_live_video, setting, value)
+    assert client.get("/api/system/status").json()["video_scheduling_page_id"] is None
+    response = client.post(f"/api/posts/{draft['id']}/schedule-video", json=approval(draft))
+    assert response.status_code == 503 and response.json()["error"]["code"] == code
+    assert client.get(f"/api/posts/{draft['id']}").json()["attempts"] == []
+
+
+def test_dashboard_live_requires_exact_review_and_video(client, monkeypatch, make_video, dashboard_live_video):
+    def forbidden(*args, **kwargs):
+        pytest.fail("an unapproved draft reached Meta")
+
+    monkeypatch.setattr(FacebookClient, "schedule_page_video", forbidden)
+    monkeypatch.setattr(FacebookClient, "schedule_page_photo", forbidden)
+    status = client.get("/api/system/status")
+    assert status.json()["video_scheduling_page_id"] == "1234" and "fake-video-token" not in status.text
+    draft = upload(client, make_video()).json()
+    base = f"/api/posts/{draft['id']}"
+    unconfirmed = client.post(f"{base}/schedule-video", json=approval(draft, confirmed=False))
+    assert unconfirmed.json()["error"]["code"] == "VIDEO_APPROVAL_REQUIRED"
+    assert client.post(f"{base}/schedule-video", json=approval(draft, confirmed="true")).status_code == 422
+    wrong_page = client.post(f"{base}/schedule-video", json=approval(draft, reviewed_page_id="4321"))
+    assert wrong_page.json()["error"]["code"] == "VIDEO_REVIEW_STALE"
+    assert client.patch(base, json={"caption": "Edited after approval"}).status_code == 200
+    stale = client.post(f"{base}/schedule-video", json=approval(draft))
+    assert stale.status_code == 409 and stale.json()["error"]["code"] == "VIDEO_REVIEW_STALE"
+    assert client.get(base).json()["attempts"] == []
+    # The original route must not bypass review even when the separate video gate is on.
+    assert client.post(f"{base}/schedule").json()["error"]["code"] == "VIDEO_APPROVAL_REQUIRED"
+    photo = client.post("/api/posts", data=fields(), files={"image": ("test.png", image_bytes("PNG"), "image/png")}).json()
+    wrong_media = client.post(f"/api/posts/{photo['id']}/schedule-video", json=approval(photo))
+    assert wrong_media.json()["error"]["code"] == "VIDEO_REQUIRED"
+
+
+@pytest.mark.parametrize("unknown", [False, True])
+def test_dashboard_schedules_reviewed_video_once_after_dry_run(client, monkeypatch, make_video, dashboard_live_video, unknown):
+    clip = make_video()
+    draft = upload(client, clip).json()
+    base = f"/api/posts/{draft['id']}"
+    requests = []
+
+    async def meta(self, **kwargs):
+        requests.append(kwargs)
+        if unknown:
+            raise FacebookWriteError(code=FacebookWriteErrorCode.OUTCOME_UNKNOWN, safe_message="Unknown fixture outcome", outcome_unknown=True)
+        return "9414"
+
+    monkeypatch.setattr(FacebookClient, "schedule_page_video", meta)
+    dry_run = client.post(f"{base}/schedule?dry_run=true").json()
+    assert dry_run["simulated"] and not dry_run["external_request_made"] and not requests
+    record = client.get(base).json()
+    confirmed = client.post(f"{base}/schedule-video", json=approval(record))
+    persisted = client.get(base).json()
+    repeat = client.post(f"{base}/schedule-video", json=approval(persisted))
+    assert repeat.status_code == 409
+    assert len(requests) == 1
+    assert requests[0]["caption"] == record["caption"] and requests[0]["video_content"] == clip
+    assert requests[0]["scheduled_publish_time"] == int(datetime.fromisoformat(record["scheduled_for_utc"]).timestamp())
+    assert persisted["attempts"][0]["external_request_made"]
+    if unknown:
+        assert confirmed.status_code == 502 and repeat.json()["error"]["code"] == "FACEBOOK_OUTCOME_UNKNOWN"
+        assert persisted["facebook_object_id"] is None and persisted["status"] == "failed"
+    else:
+        assert confirmed.status_code == 200
+        assert confirmed.json()["mode"] == "facebook_schedule" and not confirmed.json()["simulated"]
+        assert persisted["facebook_object_id"] == "9414" and persisted["status"] == "scheduled"
 
 
 @pytest.mark.parametrize("upstream_status,outcome", [(200, "scheduled"), (502, "unknown")])

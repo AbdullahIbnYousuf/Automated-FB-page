@@ -53,3 +53,18 @@ export function schedulePost(postId: string, dryRun = false): Promise<ScheduleRe
     method: "POST",
   });
 }
+
+export function scheduleVideoOnFacebook(
+  post: Pick<PostRecord, "id" | "updated_at">,
+  reviewedPageId: string,
+): Promise<ScheduleResult> {
+  return apiRequest<ScheduleResult>(`/api/posts/${post.id}/schedule-video`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      confirmed: true,
+      reviewed_updated_at: post.updated_at,
+      reviewed_page_id: reviewedPageId,
+    }),
+  });
+}

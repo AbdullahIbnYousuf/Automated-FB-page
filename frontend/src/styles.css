@@ -866,6 +866,31 @@ h3 {
   line-height: 1.5;
 }
 
+.video-scheduling-review {
+  min-width: 0;
+  display: grid;
+  gap: 12px;
+  margin: 18px 0 0;
+  padding: 14px;
+  border: 1px solid #d8def0;
+  border-radius: 12px;
+  overflow-wrap: anywhere;
+}
+
+.video-scheduling-review legend {
+  font-weight: 700;
+}
+
+.video-scheduling-review p {
+  margin: 0;
+}
+
+.video-scheduling-review__caption {
+  max-height: 14rem;
+  overflow: auto;
+  white-space: pre-wrap;
+}
+
 .safety-copy--enabled {
   color: var(--success);
 }

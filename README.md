@@ -20,11 +20,11 @@ Cloudflare Pages — React + TypeScript + Vite
     ↓ Bearer token from Supabase Auth
 Render Free Web Service — FastAPI
     ├── read-only Page identity GET
-    └── guarded scheduled-photo POST → Meta Graph API
+    └── guarded photo/video scheduling → Meta Graph API
     ↓
 Supabase Free
 ├── PostgreSQL — posts and scheduling_attempts
-├── private Storage — validated post images
+├── private Storage — validated post images and videos
 └── Auth — one email/password operator
 ```
 
@@ -51,7 +51,7 @@ APP_TIMEZONE=Asia/Dhaka
 AUTH_REQUIRED=true
 ```
 
-Real Facebook scheduling remains blocked unless both `AUTOMATION_ENABLED=true` and `PUBLISH_MODE=facebook_schedule`. Credentials alone never enable writes. Mixed configuration fails closed, and write requests are never automatically retried.
+Real Facebook scheduling remains blocked unless both `AUTOMATION_ENABLED=true` and `PUBLISH_MODE=facebook_schedule`. Video additionally requires `VIDEO_FACEBOOK_SCHEDULING_ENABLED=true` (default: false) and separate confirmation of the saved draft, caption, Page and time. Credentials alone never enable writes. Mixed configuration fails closed, and write requests are never automatically retried.
 
 ## Local setup
 
@@ -164,11 +164,21 @@ Requires a valid authorized Supabase Bearer token:
 - `GET /api/posts/{id}`
 - `PATCH /api/posts/{id}`
 - `POST /api/posts/{id}/schedule` — backend selects dry run or guarded Facebook scheduling
+- `POST /api/posts/{id}/schedule-video` — explicitly schedules one reviewed saved video; never falls back to dry run
 - `GET /api/media/{object_path}`
 
 Private images and videos are proxied through the authenticated backend. Supabase secret keys, database credentials, and Facebook tokens never enter the frontend.
 
-`/mcp` is protected by Supabase OAuth on every request. In addition to the existing image tools, `create_video_post` accepts a temporary ChatGPT file reference. MP4 handoff depends on the client; if unavailable, use the dashboard and pass the draft ID to the scheduler. MCP scheduling defaults to `dry_run`. Real video scheduling additionally requires `VIDEO_FACEBOOK_SCHEDULING_ENABLED=true` and `confirm_video=true` after explicit approval. The dashboard uses dry run for video and keeps its existing image behavior.
+`/mcp` is protected by Supabase OAuth on every request. In addition to the existing image tools, `create_video_post` accepts a temporary ChatGPT file reference. MP4 handoff depends on the client; if unavailable, use the dashboard and pass the draft ID to the scheduler. MCP scheduling defaults to `dry_run`; its real video action requires `confirm_video=true` after explicit approval. Dashboard video dry run is always available, and the existing photo action is unchanged.
+
+When the separate video switch is intentionally enabled, open the saved video
+draft in **Posts**, save any edits, then select **Review Facebook Video Schedule**.
+Verify the playback preview, caption, configured Page ID and future Dhaka time
+before clicking **Schedule Video on Facebook**. The backend rejects changed
+drafts or Page IDs, stores the returned video ID, and never blindly retries.
+The dashboard keeps the application's conservative 30-day ceiling for videos
+as well as photos. A real Meta video test requires separate approval and must
+be confirmed in the Page's scheduled-post interface; local mocks do not prove it.
 
 For the first hosted video trial, verify that Supabase and Render are healthy,
 apply the private video migration, and deploy the backend and dashboard. In
